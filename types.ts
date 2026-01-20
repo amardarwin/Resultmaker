@@ -1,0 +1,48 @@
+
+export type ClassLevel = '6' | '7' | '8' | '9' | '10';
+
+export interface StudentMarks {
+  pbi?: number;
+  pbi_a?: number;
+  pbi_b?: number;
+  hindi: number;
+  eng: number;
+  math: number;
+  sci: number;
+  sst: number;
+  comp: number;
+  phy_edu: number;
+  agri?: number;
+}
+
+export interface Student {
+  id: string;
+  rollNo: string;
+  name: string;
+  classLevel: ClassLevel;
+  marks: StudentMarks;
+}
+
+export interface CalculatedResult extends Student {
+  total: number;
+  percentage: number;
+  rank: number;
+  status: 'Pass' | 'Fail';
+}
+
+export interface PerformanceBand {
+  range: string;
+  count: number;
+  color: string;
+}
+
+export enum SubjectType {
+  MAIN = 'MAIN',
+  GRADING = 'GRADING'
+}
+
+export interface SubjectConfig {
+  key: keyof StudentMarks;
+  label: string;
+  type: SubjectType;
+}
