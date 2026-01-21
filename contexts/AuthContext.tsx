@@ -1,6 +1,5 @@
-
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User, Role, ClassLevel, StudentMarks, SchoolConfig, StaffUser, Student } from '../types';
+import { User, Role, ClassLevel, StudentMarks, SchoolConfig, StaffUser, Student, TeachingAssignment } from '../types';
 
 interface AuthContextType {
   user: User | null;
@@ -106,10 +105,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const canEditSubject = (subjectKey: keyof StudentMarks, classLevel: ClassLevel): boolean => {
     if (!user) return false;
     if (user.role === Role.ADMIN) return true;
+    
     // Incharges can edit ALL subjects for their own class
     if (user.role === Role.CLASS_INCHARGE && user.assignedClass === classLevel) return true;
-    // Subject teachers (or Hybrid Incharges) can edit columns that are in their assigned list
-    if (user.assignedSubjects?.includes(subjectKey)) return true;
+    
+    // Check granular teaching assignments
+    const assignment = user.teachingAssignments?.find(a => a.classLevel === classLevel);
+    if (assignment?.subjects.includes(subjectKey)) return true;
+    
     return false;
   };
 

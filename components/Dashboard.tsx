@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { CalculatedResult, SubjectType, Student, StudentMarks, ClassLevel, Role } from '../types';
@@ -19,11 +18,12 @@ const Dashboard: React.FC<DashboardProps> = ({ results, allStudents, className, 
   const { user } = useAuth();
   const [selectedBand, setSelectedBand] = useState<string | null>(null);
   
-  // Fix: Property 'assignedSubject' does not exist on type 'User'. Using 'assignedSubjects' array instead.
-  // Logic: Subject Teachers default to their first assigned subject comparison
+  // Logic: Defaults to first subject assigned for this specific class
   const [compSubject, setCompSubject] = useState<keyof StudentMarks>(() => {
-    if (user?.role === Role.SUBJECT_TEACHER && user.assignedSubjects && user.assignedSubjects.length > 0) {
-      return user.assignedSubjects[0];
+    const classLevel = className as ClassLevel;
+    const assignment = user?.teachingAssignments?.find(a => a.classLevel === classLevel);
+    if (assignment && assignment.subjects.length > 0) {
+      return assignment.subjects[0];
     }
     return 'hindi';
   });
@@ -68,7 +68,7 @@ const Dashboard: React.FC<DashboardProps> = ({ results, allStudents, className, 
     return results.filter(res => res.percentage >= band.min && res.percentage < band.max);
   }, [selectedBand, results, bands]);
 
-  const allPossibleSubjects = GET_SUBJECTS_FOR_CLASS('10');
+  const allPossibleSubjects = GET_SUBJECTS_FOR_CLASS(className as ClassLevel);
   const isSubjectLocked = user?.role === Role.SUBJECT_TEACHER;
 
   return (
@@ -201,8 +201,10 @@ const Dashboard: React.FC<DashboardProps> = ({ results, allStudents, className, 
         <h3 className="text-2xl font-black text-slate-800 px-2">Subject Performance Analysis</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {subjectStats.map((stat) => {
-            // Fix: Property 'assignedSubject' does not exist on type 'User'. Using 'assignedSubjects' array instead.
-            const isAssignedSubject = user?.role === Role.SUBJECT_TEACHER && user.assignedSubjects?.includes(stat.key);
+            const classLevel = className as ClassLevel;
+            const assignment = user?.teachingAssignments?.find(a => a.classLevel === classLevel);
+            const isAssignedSubject = (user?.role === Role.SUBJECT_TEACHER || user?.role === Role.CLASS_INCHARGE) && assignment?.subjects.includes(stat.key);
+            
             return (
               <button 
                 key={stat.key}

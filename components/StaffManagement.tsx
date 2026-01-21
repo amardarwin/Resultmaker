@@ -1,44 +1,70 @@
-
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Role, StaffUser, StudentMarks } from '../types';
+import { Role, StaffUser, StudentMarks, ClassLevel, TeachingAssignment } from '../types';
 import { ALL_CLASSES, GET_SUBJECTS_FOR_CLASS } from '../constants';
 
 const StaffManagement: React.FC = () => {
   const { staffUsers, addStaff, updateStaff, removeStaff } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  
+  // Schedule Builder Temp States
+  const [activeBuilderClass, setActiveBuilderClass] = useState<ClassLevel>('6');
+  const [activeBuilderSubjects, setActiveBuilderSubjects] = useState<(keyof StudentMarks)[]>([]);
+
   const [formData, setFormData] = useState<Partial<StaffUser>>({
     name: '',
     username: '',
     password: '',
     role: Role.CLASS_INCHARGE,
     assignedClass: '10',
-    assignedSubjects: []
+    teachingAssignments: []
   });
 
-  // Get a master list of all unique subjects available across school levels
-  const masterSubjects = [
-    ...GET_SUBJECTS_FOR_CLASS('8'), 
-    ...GET_SUBJECTS_FOR_CLASS('10')
-  ].filter((v, i, a) => a.findIndex(t => t.key === v.key) === i);
+  const availableSubjectsForClass = GET_SUBJECTS_FOR_CLASS(activeBuilderClass);
 
   const handleEditClick = (user: StaffUser) => {
     setEditingUserId(user.id);
     setFormData({
       ...user,
-      assignedSubjects: user.assignedSubjects || []
+      teachingAssignments: user.teachingAssignments || []
     });
     setShowForm(true);
   };
 
-  const toggleSubject = (key: keyof StudentMarks) => {
-    const current = formData.assignedSubjects || [];
-    if (current.includes(key)) {
-      setFormData({ ...formData, assignedSubjects: current.filter(s => s !== key) });
+  const toggleBuilderSubject = (key: keyof StudentMarks) => {
+    if (activeBuilderSubjects.includes(key)) {
+      setActiveBuilderSubjects(prev => prev.filter(s => s !== key));
     } else {
-      setFormData({ ...formData, assignedSubjects: [...current, key] });
+      setActiveBuilderSubjects(prev => [...prev, key]);
     }
+  };
+
+  const addAssignmentToSchedule = () => {
+    if (activeBuilderSubjects.length === 0) return alert("Select at least one subject.");
+    
+    const currentAssignments = formData.teachingAssignments || [];
+    // If class already exists, merge subjects, else add new entry
+    const existingIdx = currentAssignments.findIndex(a => a.classLevel === activeBuilderClass);
+    
+    let updated: TeachingAssignment[];
+    if (existingIdx > -1) {
+      const mergedSubjects = Array.from(new Set([...currentAssignments[existingIdx].subjects, ...activeBuilderSubjects]));
+      updated = [...currentAssignments];
+      updated[existingIdx] = { classLevel: activeBuilderClass, subjects: mergedSubjects };
+    } else {
+      updated = [...currentAssignments, { classLevel: activeBuilderClass, subjects: [...activeBuilderSubjects] }];
+    }
+    
+    setFormData({ ...formData, teachingAssignments: updated });
+    setActiveBuilderSubjects([]);
+  };
+
+  const removeAssignment = (classLevel: ClassLevel) => {
+    setFormData({
+      ...formData,
+      teachingAssignments: formData.teachingAssignments?.filter(a => a.classLevel !== classLevel)
+    });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -53,7 +79,7 @@ const StaffManagement: React.FC = () => {
         role: formData.role!,
       } as StaffUser),
       assignedClass: formData.role === Role.CLASS_INCHARGE ? formData.assignedClass : undefined,
-      assignedSubjects: formData.assignedSubjects || []
+      teachingAssignments: formData.teachingAssignments || []
     };
 
     if (editingUserId) {
@@ -68,7 +94,8 @@ const StaffManagement: React.FC = () => {
   const resetForm = () => {
     setShowForm(false);
     setEditingUserId(null);
-    setFormData({ name: '', username: '', password: '', role: Role.CLASS_INCHARGE, assignedSubjects: [] });
+    setFormData({ name: '', username: '', password: '', role: Role.CLASS_INCHARGE, teachingAssignments: [] });
+    setActiveBuilderSubjects([]);
   };
 
   return (
@@ -76,7 +103,7 @@ const StaffManagement: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-black text-slate-800">Staff Directory</h2>
-          <p className="text-slate-400 text-xs font-bold uppercase mt-1">Manage Teacher Access & Multi-Subject Assignment</p>
+          <p className="text-slate-400 text-xs font-bold uppercase mt-1">Manage Teachers & Granular Class Schedules</p>
         </div>
         <button 
           onClick={() => { if (showForm) resetForm(); else setShowForm(true); }}
@@ -93,67 +120,129 @@ const StaffManagement: React.FC = () => {
             <i className={`fa-solid ${editingUserId ? 'fa-pen-to-square' : 'fa-plus'}`}></i>
             {editingUserId ? 'Edit Staff Credentials' : 'Add New Staff Member'}
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Full Name</label>
-                <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-3 bg-slate-50 border rounded-xl font-bold focus:border-indigo-500 outline-none" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Username</label>
-                <input required type="text" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} className="w-full p-3 bg-slate-50 border rounded-xl font-bold focus:border-indigo-500 outline-none" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Password</label>
-                <input required type="text" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full p-3 bg-slate-50 border border-indigo-100 rounded-xl font-bold focus:border-indigo-500 outline-none" />
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Role</label>
-                <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value as Role})} className="w-full p-3 bg-slate-50 border rounded-xl font-bold focus:border-indigo-500 outline-none">
-                  <option value={Role.CLASS_INCHARGE}>Class Incharge</option>
-                  <option value={Role.SUBJECT_TEACHER}>Subject Teacher</option>
-                </select>
-              </div>
-              {formData.role === Role.CLASS_INCHARGE && (
+          
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            {/* Profile Info */}
+            <div className="lg:col-span-4 space-y-4">
+              <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 space-y-4">
+                <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Account Details</span>
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Assigned Class (Full Control)</label>
-                  <select value={formData.assignedClass} onChange={e => setFormData({...formData, assignedClass: e.target.value as any})} className="w-full p-3 bg-slate-50 border rounded-xl font-bold focus:border-indigo-500 outline-none">
-                    {ALL_CLASSES.map(c => <option key={c} value={c}>Class {c}</option>)}
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Full Name</label>
+                  <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold focus:border-indigo-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Username</label>
+                  <input required type="text" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold focus:border-indigo-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Password</label>
+                  <input required type="text" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold focus:border-indigo-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Base Role</label>
+                  <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value as Role})} className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold focus:border-indigo-500 outline-none">
+                    <option value={Role.CLASS_INCHARGE}>Class Incharge</option>
+                    <option value={Role.SUBJECT_TEACHER}>Subject Teacher</option>
                   </select>
                 </div>
-              )}
-              <div className="pt-4">
-                <button type="submit" className="w-full py-4 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 uppercase text-xs tracking-wider">
-                  {editingUserId ? 'Update User' : 'Save User'}
-                </button>
+                {formData.role === Role.CLASS_INCHARGE && (
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Primary Class</label>
+                    <select value={formData.assignedClass} onChange={e => setFormData({...formData, assignedClass: e.target.value as any})} className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold focus:border-indigo-500 outline-none">
+                      {ALL_CLASSES.map(c => <option key={c} value={c}>Class {c}</option>)}
+                    </select>
+                  </div>
+                )}
               </div>
+              <button type="submit" className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 uppercase text-xs tracking-wider">
+                {editingUserId ? 'Update Profile' : 'Finalize Staff'}
+              </button>
             </div>
 
-            <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
-               <label className="block text-[10px] font-black text-slate-400 uppercase mb-4 flex justify-between">
-                 Assigned Subjects
-                 <span className="text-indigo-500">{formData.assignedSubjects?.length || 0} Selected</span>
-               </label>
-               <div className="grid grid-cols-2 gap-3 max-h-64 overflow-y-auto pr-2 custom-scrollbar">
-                  {masterSubjects.map(sub => (
-                    <label key={sub.key} className={`flex items-center gap-2 p-2 rounded-lg border transition-all cursor-pointer ${formData.assignedSubjects?.includes(sub.key) ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300'}`}>
-                      <input 
-                        type="checkbox" 
-                        className="hidden" 
-                        checked={formData.assignedSubjects?.includes(sub.key)} 
-                        onChange={() => toggleSubject(sub.key)}
-                      />
-                      <i className={`fa-solid ${formData.assignedSubjects?.includes(sub.key) ? 'fa-check-circle' : 'fa-circle-plus opacity-30'} text-xs`}></i>
-                      <span className="text-[10px] font-black uppercase truncate">{sub.label}</span>
-                    </label>
-                  ))}
-               </div>
-               <p className="mt-4 text-[9px] font-bold text-slate-400 leading-tight uppercase">
-                 Note: Subject Teachers can only edit marks for assigned subjects across all classes.
-               </p>
+            {/* Teaching Schedule Builder */}
+            <div className="lg:col-span-8 flex flex-col gap-6">
+              <div className="bg-white p-6 rounded-2xl border-2 border-slate-100 space-y-6">
+                <div className="flex items-center justify-between border-b border-slate-50 pb-4">
+                   <span className="text-sm font-black text-slate-800 uppercase tracking-tight">Assignment Builder</span>
+                   <span className="text-[10px] font-black text-slate-400">Step 1: Build Schedule Rows</span>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">1. Select Target Class</label>
+                    <div className="flex gap-2 flex-wrap">
+                      {ALL_CLASSES.map(cls => (
+                        <button 
+                          key={cls}
+                          type="button"
+                          onClick={() => { setActiveBuilderClass(cls); setActiveBuilderSubjects([]); }}
+                          className={`flex-1 py-2 px-3 rounded-lg text-xs font-black transition-all ${activeBuilderClass === cls ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-400'}`}
+                        >
+                          C-{cls}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">2. Pick Subjects (Class {activeBuilderClass})</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {availableSubjectsForClass.map(sub => (
+                        <button
+                          key={sub.key}
+                          type="button"
+                          onClick={() => toggleBuilderSubject(sub.key)}
+                          className={`py-1.5 px-2 rounded-lg text-[9px] font-black uppercase text-left transition-all border ${activeBuilderSubjects.includes(sub.key) ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-slate-200 text-slate-500'}`}
+                        >
+                          <i className={`fa-solid ${activeBuilderSubjects.includes(sub.key) ? 'fa-check' : 'fa-plus'} mr-1 opacity-50`}></i>
+                          {sub.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <button 
+                  type="button"
+                  onClick={addAssignmentToSchedule}
+                  className="w-full py-3 bg-slate-900 text-white font-black rounded-xl text-[10px] uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
+                >
+                  <i className="fa-solid fa-calendar-plus"></i>
+                  Add to Teacher's Schedule
+                </button>
+              </div>
+
+              {/* Active Assignments View */}
+              <div className="flex-1 space-y-3">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-2">Current Active Schedule</span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {(!formData.teachingAssignments || formData.teachingAssignments.length === 0) ? (
+                    <div className="md:col-span-2 p-10 border-2 border-dashed border-slate-100 rounded-3xl flex flex-col items-center justify-center text-slate-300">
+                      <i className="fa-solid fa-calendar-days text-3xl mb-2 opacity-30"></i>
+                      <p className="text-[10px] font-black uppercase tracking-tighter">No teaching assignments added yet</p>
+                    </div>
+                  ) : (
+                    formData.teachingAssignments.map(assignment => (
+                      <div key={assignment.classLevel} className="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100 relative group animate-in slide-in-from-right-4 duration-300">
+                        <button 
+                          onClick={() => removeAssignment(assignment.classLevel)}
+                          className="absolute top-2 right-2 w-6 h-6 bg-white text-red-400 rounded-lg flex items-center justify-center text-xs shadow-sm hover:bg-red-500 hover:text-white transition-all opacity-0 group-hover:opacity-100"
+                        >
+                          <i className="fa-solid fa-times"></i>
+                        </button>
+                        <div className="flex items-center gap-2 mb-2">
+                           <span className="bg-indigo-600 text-white text-[10px] font-black px-2 py-0.5 rounded uppercase">Class {assignment.classLevel}</span>
+                           <span className="text-[9px] font-bold text-indigo-400 uppercase">{assignment.subjects.length} Subjects</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {assignment.subjects.map(s => (
+                            <span key={s} className="bg-white border border-indigo-100 text-indigo-700 text-[8px] font-black px-1.5 py-0.5 rounded uppercase">{s}</span>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </form>
@@ -165,14 +254,13 @@ const StaffManagement: React.FC = () => {
             <tr>
               <th className="px-6 py-4">Staff Member</th>
               <th className="px-6 py-4">Role</th>
-              <th className="px-6 py-4">Incharge Of</th>
-              <th className="px-6 py-4">Subjects Assigned</th>
+              <th className="px-6 py-4">Responsibilities</th>
               <th className="px-6 py-4 text-center">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
             {staffUsers.length === 0 ? (
-              <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400 font-bold italic">No staff users created yet.</td></tr>
+              <tr><td colSpan={4} className="px-6 py-12 text-center text-slate-400 font-bold italic">No staff users created yet.</td></tr>
             ) : (
               staffUsers.map(user => (
                 <tr key={user.id} className="hover:bg-slate-50 transition-colors group">
@@ -187,20 +275,26 @@ const StaffManagement: React.FC = () => {
                       {user.role.replace('_', ' ')}
                     </span>
                   </td>
-                  <td className="px-6 py-4 font-black text-slate-600">
-                    {user.assignedClass ? `Class ${user.assignedClass}` : '—'}
-                  </td>
                   <td className="px-6 py-4">
-                    <div className="flex flex-wrap gap-1">
-                      {user.assignedSubjects && user.assignedSubjects.length > 0 ? (
-                        user.assignedSubjects.map(s => (
-                          <span key={s} className="px-2 py-0.5 bg-slate-100 text-slate-600 text-[9px] font-black rounded uppercase">
-                            {s}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-slate-300 italic text-[10px]">None</span>
+                    <div className="flex flex-col gap-1.5">
+                      {user.assignedClass && (
+                        <div className="flex items-center gap-1">
+                          <i className="fa-solid fa-star text-[8px] text-yellow-500"></i>
+                          <span className="text-[10px] font-black text-slate-600 uppercase">Incharge: Class {user.assignedClass}</span>
+                        </div>
                       )}
+                      <div className="flex flex-wrap gap-1.5">
+                        {user.teachingAssignments && user.teachingAssignments.length > 0 ? (
+                          user.teachingAssignments.map(a => (
+                            <div key={a.classLevel} className="flex items-center bg-slate-100 rounded-md px-1.5 py-0.5 border border-slate-200">
+                               <span className="text-[9px] font-black text-slate-400 mr-1">C-{a.classLevel}:</span>
+                               <span className="text-[9px] font-black text-slate-800 uppercase">{a.subjects.join(', ')}</span>
+                            </div>
+                          ))
+                        ) : (
+                          !user.assignedClass && <span className="text-slate-300 italic text-[10px]">No Assignments</span>
+                        )}
+                      </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 text-center">

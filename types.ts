@@ -1,4 +1,3 @@
-
 export type ClassLevel = '6' | '7' | '8' | '9' | '10';
 
 export enum Role {
@@ -8,13 +7,18 @@ export enum Role {
   STUDENT = 'STUDENT'
 }
 
+export interface TeachingAssignment {
+  classLevel: ClassLevel;
+  subjects: (keyof StudentMarks)[];
+}
+
 export interface User {
   id: string;
   username: string;
   name: string;
   role: Role;
   assignedClass?: ClassLevel;
-  assignedSubjects?: (keyof StudentMarks)[]; // Now supports multiple subjects
+  teachingAssignments?: TeachingAssignment[]; // Replaced assignedSubjects
   rollNo?: string;
 }
 
