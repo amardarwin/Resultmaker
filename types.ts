@@ -9,11 +9,24 @@ export enum Role {
 }
 
 export interface User {
+  id: string;
   username: string;
+  name: string;
   role: Role;
   assignedClass?: ClassLevel;
   assignedSubject?: keyof StudentMarks;
-  rollNo?: string; // For student view
+  rollNo?: string;
+}
+
+export interface StaffUser extends User {
+  password?: string;
+}
+
+export interface SchoolConfig {
+  schoolName: string;
+  adminName: string;
+  adminPassword?: string;
+  isSetup: boolean;
 }
 
 export interface StudentMarks {

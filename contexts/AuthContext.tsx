@@ -1,10 +1,15 @@
 
-import React, { createContext, useContext, useState, ReactNode } from 'react';
-import { User, Role, ClassLevel, StudentMarks } from '../types';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { User, Role, ClassLevel, StudentMarks, SchoolConfig, StaffUser, Student } from '../types';
 
 interface AuthContextType {
   user: User | null;
-  login: (username: string, pass: string) => boolean;
+  schoolConfig: SchoolConfig | null;
+  staffUsers: StaffUser[];
+  setupSchool: (config: SchoolConfig) => void;
+  addStaff: (staff: StaffUser) => void;
+  removeStaff: (id: string) => void;
+  login: (credentials: { username: string; pass: string; role: Role; classLevel?: ClassLevel; rollNo?: string }) => boolean;
   logout: () => void;
   canEditStudent: (classLevel: ClassLevel) => boolean;
   canEditSubject: (subjectKey: keyof StudentMarks, classLevel: ClassLevel) => boolean;
@@ -15,26 +20,61 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('edurank_auth');
+    const saved = localStorage.getItem('edurank_active_session');
     return saved ? JSON.parse(saved) : null;
   });
 
-  const login = (username: string, pass: string): boolean => {
-    let authenticatedUser: User | null = null;
+  const [schoolConfig, setSchoolConfig] = useState<SchoolConfig | null>(() => {
+    const saved = localStorage.getItem('school_config');
+    return saved ? JSON.parse(saved) : null;
+  });
 
-    if (username === 'head' && pass === 'admin') {
-      authenticatedUser = { username: 'Head', role: Role.ADMIN };
-    } else if (username === 'incharge10' && pass === '123') {
-      authenticatedUser = { username: 'Class Incharge (10th)', role: Role.CLASS_INCHARGE, assignedClass: '10' };
-    } else if (username === 'mathsir' && pass === '123') {
-      authenticatedUser = { username: 'Math Teacher', role: Role.SUBJECT_TEACHER, assignedSubject: 'math' };
-    } else if (username === '1' && pass === 'pass') {
-      authenticatedUser = { username: 'Student 1', role: Role.STUDENT, rollNo: '1' };
+  const [staffUsers, setStaffUsers] = useState<StaffUser[]>(() => {
+    const saved = localStorage.getItem('staff_users');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(() => {
+    if (schoolConfig) localStorage.setItem('school_config', JSON.stringify(schoolConfig));
+    localStorage.setItem('staff_users', JSON.stringify(staffUsers));
+  }, [schoolConfig, staffUsers]);
+
+  const setupSchool = (config: SchoolConfig) => {
+    setSchoolConfig(config);
+  };
+
+  const addStaff = (staff: StaffUser) => {
+    setStaffUsers(prev => [...prev, staff]);
+  };
+
+  const removeStaff = (id: string) => {
+    setStaffUsers(prev => prev.filter(s => s.id !== id));
+  };
+
+  const login = (creds: { username: string; pass: string; role: Role; classLevel?: ClassLevel; rollNo?: string }): boolean => {
+    let authUser: User | null = null;
+
+    if (creds.role === Role.ADMIN) {
+      if (creds.username === 'admin' && creds.pass === schoolConfig?.adminPassword) {
+        authUser = { id: 'admin', username: 'admin', name: schoolConfig.adminName, role: Role.ADMIN };
+      }
+    } else if (creds.role === Role.CLASS_INCHARGE || creds.role === Role.SUBJECT_TEACHER) {
+      const staff = staffUsers.find(s => s.username === creds.username && s.password === creds.pass && s.role === creds.role);
+      if (staff) {
+        const { password, ...safeUser } = staff;
+        authUser = safeUser;
+      }
+    } else if (creds.role === Role.STUDENT) {
+      const students: Student[] = JSON.parse(localStorage.getItem('school_results_students') || '[]');
+      const student = students.find(s => s.classLevel === creds.classLevel && s.rollNo === creds.rollNo);
+      if (student && creds.pass === '1234') {
+        authUser = { id: student.id, username: student.rollNo, name: student.name, role: Role.STUDENT, assignedClass: student.classLevel, rollNo: student.rollNo };
+      }
     }
 
-    if (authenticatedUser) {
-      setUser(authenticatedUser);
-      localStorage.setItem('edurank_auth', JSON.stringify(authenticatedUser));
+    if (authUser) {
+      setUser(authUser);
+      localStorage.setItem('edurank_active_session', JSON.stringify(authUser));
       return true;
     }
     return false;
@@ -42,7 +82,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('edurank_auth');
+    localStorage.removeItem('edurank_active_session');
   };
 
   const canEditStudent = (classLevel: ClassLevel): boolean => {
@@ -63,7 +103,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const isViewRestricted = user?.role === Role.CLASS_INCHARGE || user?.role === Role.STUDENT;
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, canEditStudent, canEditSubject, isViewRestricted }}>
+    <AuthContext.Provider value={{ 
+      user, schoolConfig, staffUsers, setupSchool, addStaff, removeStaff, login, logout, canEditStudent, canEditSubject, isViewRestricted 
+    }}>
       {children}
     </AuthContext.Provider>
   );
