@@ -165,4 +165,3 @@ const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, 
 };
 
 export default ResultTable;
-    

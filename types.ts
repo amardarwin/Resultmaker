@@ -21,6 +21,7 @@ export interface Student {
   name: string;
   classLevel: ClassLevel;
   marks: StudentMarks;
+  manualTotal?: number; // Allows user to manually override the total
 }
 
 export interface CalculatedResult extends Student {
@@ -28,12 +29,6 @@ export interface CalculatedResult extends Student {
   percentage: number;
   rank: number;
   status: 'Pass' | 'Fail';
-}
-
-export interface PerformanceBand {
-  range: string;
-  count: number;
-  color: string;
 }
 
 export enum SubjectType {

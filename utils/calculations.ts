@@ -1,16 +1,19 @@
 
 import { Student, CalculatedResult, SubjectType } from '../types';
-import { GET_SUBJECTS_FOR_CLASS, MAX_MARKS_PER_SUBJECT } from '../constants';
+import { GET_SUBJECTS_FOR_CLASS } from '../constants';
 
-export const calculateStudentResult = (student: Student): Omit<CalculatedResult, 'rank'> => {
+export const calculateStudentResult = (student: Student, maxMarksPerSubject: number = 100): Omit<CalculatedResult, 'rank'> => {
   const subjects = GET_SUBJECTS_FOR_CLASS(student.classLevel);
   const mainSubjects = subjects.filter(s => s.type === SubjectType.MAIN);
   
-  const total = mainSubjects.reduce((acc, sub) => {
+  // Use manual total if provided, otherwise calculate
+  const calculatedTotal = mainSubjects.reduce((acc, sub) => {
     return acc + (student.marks[sub.key] || 0);
   }, 0);
 
-  const maxTotal = mainSubjects.length * MAX_MARKS_PER_SUBJECT;
+  const total = student.manualTotal !== undefined ? student.manualTotal : calculatedTotal;
+
+  const maxTotal = mainSubjects.length * maxMarksPerSubject;
   const percentage = maxTotal > 0 ? (total / maxTotal) * 100 : 0;
 
   return {
@@ -21,22 +24,17 @@ export const calculateStudentResult = (student: Student): Omit<CalculatedResult,
   };
 };
 
-export const rankStudents = (students: Student[], classLevel: string): CalculatedResult[] => {
+export const rankStudents = (students: Student[], classLevel: string, maxMarks: number): CalculatedResult[] => {
   const classStudents = students.filter(s => s.classLevel === classLevel);
   if (classStudents.length === 0) return [];
 
-  const results = classStudents.map(s => calculateStudentResult(s));
+  const results = classStudents.map(s => calculateStudentResult(s, maxMarks));
   
-  // Sort by total descending
   const sorted = [...results].sort((a, b) => b.total - a.total);
   
   return sorted.map((res, index) => {
-    // Basic ranking logic (does not handle ties in this simple version, 
-    // but typically school results give unique ranks or dense ranks)
-    // Let's implement tied ranking
     let rank = index + 1;
     if (index > 0 && res.total === sorted[index - 1].total) {
-      // Find the rank of the first occurrence of this total
       const previousWithSameTotal = sorted.findIndex(s => s.total === res.total);
       rank = previousWithSameTotal + 1;
     }

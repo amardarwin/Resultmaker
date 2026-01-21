@@ -8,16 +8,17 @@ import { parseCSV } from './utils/import';
 import Dashboard from './components/Dashboard';
 import StudentForm from './components/StudentForm';
 import ResultTable from './components/ResultTable';
+import SubjectEntryForm from './components/SubjectEntryForm';
 
 const App: React.FC = () => {
   const [activeClass, setActiveClass] = useState<ClassLevel>('6');
+  const [maxMarks, setMaxMarks] = useState(100);
   const [students, setStudents] = useState<Student[]>(() => {
     const saved = localStorage.getItem('school_results_students');
     return saved ? JSON.parse(saved) : [];
   });
-  const [isAdding, setIsAdding] = useState(false);
+  const [view, setView] = useState<'sheet' | 'dashboard' | 'entry' | 'subject-entry'>('sheet');
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
-  const [view, setView] = useState<'sheet' | 'dashboard'>('sheet');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -25,8 +26,8 @@ const App: React.FC = () => {
   }, [students]);
 
   const classResults = useMemo(() => {
-    return rankStudents(students, activeClass);
-  }, [students, activeClass]);
+    return rankStudents(students, activeClass, maxMarks);
+  }, [students, activeClass, maxMarks]);
 
   const handleAddOrUpdate = (student: Student) => {
     if (editingStudent) {
@@ -34,8 +35,16 @@ const App: React.FC = () => {
     } else {
       setStudents(prev => [...prev, student]);
     }
-    setIsAdding(false);
+    setView('sheet');
     setEditingStudent(null);
+  };
+
+  const handleBulkUpdate = (updatedStudents: Student[]) => {
+    setStudents(prev => {
+      const otherClasses = prev.filter(s => s.classLevel !== activeClass);
+      return [...otherClasses, ...updatedStudents];
+    });
+    setView('sheet');
   };
 
   const handleDelete = (id: string) => {
@@ -44,201 +53,136 @@ const App: React.FC = () => {
 
   const handleEdit = (student: Student) => {
     setEditingStudent(student);
-    setIsAdding(true);
-  };
-
-  const handleExport = () => {
-    exportToCSV(classResults, activeClass);
-  };
-
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const imported = await parseCSV(file, activeClass);
-      if (imported.length === 0) throw new Error('No valid records found in file');
-      
-      setStudents(prev => [...prev, ...imported]);
-      alert(`Successfully imported ${imported.length} students to Class ${activeClass}`);
-    } catch (err: any) {
-      alert(`Import failed: ${err.message}`);
-    } finally {
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
+    setView('entry');
   };
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-900 pb-20">
-      {/* Hidden File Input */}
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        onChange={handleFileImport} 
-        accept=".csv" 
-        className="hidden" 
-      />
+    <div className="min-h-screen bg-[#f8fafc] text-slate-900 pb-24">
+      <input type="file" ref={fileInputRef} onChange={async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+          const imported = await parseCSV(file, activeClass);
+          setStudents(prev => [...prev, ...imported]);
+          alert(`Successfully imported ${imported.length} students to Class ${activeClass}`);
+        } catch (err: any) { alert(err.message); }
+      }} accept=".csv" className="hidden" />
 
-      {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      {/* Primary Navigation */}
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg rotate-3">
               <i className="fa-solid fa-graduation-cap text-xl"></i>
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-slate-800">EduRank</h1>
-              <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest leading-none">Result System</p>
+              <h1 className="text-xl font-black tracking-tight text-slate-800">EduRank Pro</h1>
+              <p className="text-[9px] uppercase font-black text-indigo-500 tracking-widest leading-none">Result Management</p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2 md:space-x-4">
-            <div className="hidden md:flex bg-slate-100 p-1 rounded-lg border border-slate-200">
-              <button 
-                onClick={() => setView('sheet')}
-                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${view === 'sheet' ? 'bg-white text-blue-600 shadow-sm' : 'hover:text-slate-700 text-slate-500'}`}
-              >
-                <i className="fa-solid fa-table-list mr-2"></i> Result Sheet
-              </button>
-              <button 
-                onClick={() => setView('dashboard')}
-                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${view === 'dashboard' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-              >
-                <i className="fa-solid fa-chart-pie mr-2"></i> Performance
-              </button>
+          <div className="flex items-center space-x-3">
+            {/* Exam Cycle Selector */}
+            <div className="hidden lg:flex items-center bg-slate-100 rounded-xl p-1 border border-slate-200 ring-4 ring-slate-50">
+              <label className="text-[10px] font-black text-slate-400 uppercase px-3">Exam Scale</label>
+              {[20, 80, 100].map(val => (
+                <button 
+                  key={val}
+                  onClick={() => setMaxMarks(val)}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${maxMarks === val ? 'bg-white text-indigo-600 shadow-md ring-1 ring-black/5' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  {val === 20 ? 'Bimonthly' : val === 80 ? 'Term' : 'Final'} ({val})
+                </button>
+              ))}
             </div>
-            
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={handleImportClick}
-                title="Import students from CSV"
-                className="p-2 text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors flex items-center justify-center"
-              >
-                <i className="fa-solid fa-file-import md:mr-2"></i>
-                <span className="hidden md:inline text-sm font-medium">Import</span>
-              </button>
 
-              <button
-                onClick={handleExport}
-                title="Download current sheet as CSV"
-                className="p-2 text-emerald-600 border border-emerald-200 rounded-lg hover:bg-emerald-50 transition-colors flex items-center justify-center"
-              >
-                <i className="fa-solid fa-file-csv md:mr-2 text-lg"></i>
-                <span className="hidden md:inline text-sm font-medium">CSV</span>
-              </button>
+            <div className="h-8 w-px bg-slate-200 mx-2 hidden lg:block"></div>
 
-              <button
-                onClick={() => {
-                  setEditingStudent(null);
-                  setIsAdding(true);
-                }}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 shadow-md hover:shadow-lg transition-all flex items-center"
-              >
-                <i className="fa-solid fa-plus mr-2"></i>
-                <span className="hidden sm:inline">Entry</span>
-              </button>
-            </div>
+            <button onClick={() => { setEditingStudent(null); setView('entry'); }} className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-xs font-black hover:bg-indigo-700 shadow-lg shadow-indigo-100 flex items-center transition-all hover:-translate-y-0.5 active:translate-y-0">
+              <i className="fa-solid fa-user-plus mr-2"></i> New Entry
+            </button>
           </div>
         </div>
       </header>
 
-      {/* Toolbar / Selection */}
-      <div className="bg-white border-b border-slate-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center space-x-2">
-            <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">Viewing Class:</span>
-            <div className="flex space-x-1">
-              {ALL_CLASSES.map(cls => {
-                const count = students.filter(s => s.classLevel === cls).length;
-                return (
-                  <button
-                    key={cls}
-                    onClick={() => setActiveClass(cls)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-all border flex items-center space-x-2 ${
-                      activeClass === cls 
-                      ? 'bg-blue-50 border-blue-200 text-blue-700' 
-                      : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
-                    }`}
-                  >
-                    <span>{cls}</span>
-                    <span className={`px-1.5 py-0.5 rounded-md text-[10px] ${
-                      activeClass === cls ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'
-                    }`}>
-                      {count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+      {/* Toolbar / Secondary Nav */}
+      <div className="bg-white border-b border-slate-100 sticky top-16 z-40">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl w-full md:w-auto">
+            {ALL_CLASSES.map(cls => (
+              <button
+                key={cls}
+                onClick={() => setActiveClass(cls)}
+                className={`flex-1 md:flex-none px-5 py-2 rounded-lg text-xs font-black transition-all ${activeClass === cls ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                CLASS {cls}
+              </button>
+            ))}
           </div>
-          
-          <div className="md:hidden flex bg-slate-100 p-1 rounded-lg border border-slate-200 w-fit">
-            <button 
-              onClick={() => setView('sheet')}
-              className={`px-4 py-1 rounded-md text-xs font-bold transition-all ${view === 'sheet' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
-            >
-              SHEET
+
+          <div className="flex items-center space-x-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+            <button onClick={() => setView('sheet')} className={`flex-shrink-0 px-4 py-2 rounded-lg text-xs font-bold transition-all ${view === 'sheet' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-50'}`}>
+              <i className="fa-solid fa-table mr-2"></i> Result Sheet
             </button>
-            <button 
-              onClick={() => setView('dashboard')}
-              className={`px-4 py-1 rounded-md text-xs font-bold transition-all ${view === 'dashboard' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
-            >
-              CHART
+            <button onClick={() => setView('subject-entry')} className={`flex-shrink-0 px-4 py-2 rounded-lg text-xs font-bold transition-all ${view === 'subject-entry' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-50'}`}>
+              <i className="fa-solid fa-list-check mr-2"></i> Subject Wise
+            </button>
+            <button onClick={() => setView('dashboard')} className={`flex-shrink-0 px-4 py-2 rounded-lg text-xs font-bold transition-all ${view === 'dashboard' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-50'}`}>
+              <i className="fa-solid fa-chart-simple mr-2"></i> Stats
+            </button>
+            <div className="h-6 w-px bg-slate-200 mx-2"></div>
+            <button onClick={() => fileInputRef.current?.click()} className="flex-shrink-0 px-4 py-2 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-50 border border-slate-200">
+              <i className="fa-solid fa-file-import mr-2"></i> Import
+            </button>
+            <button onClick={() => exportToCSV(classResults, activeClass)} className="flex-shrink-0 px-4 py-2 rounded-lg text-xs font-bold text-emerald-600 hover:bg-emerald-50 border border-emerald-100">
+              <i className="fa-solid fa-file-export mr-2"></i> Export
             </button>
           </div>
         </div>
       </div>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {isAdding ? (
-          <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* Main Content Area */}
+      <main className="max-w-7xl mx-auto px-4 py-8">
+        {view === 'entry' ? (
+          <div className="max-w-4xl mx-auto">
             <StudentForm 
               onAdd={handleAddOrUpdate} 
-              onCancel={() => setIsAdding(false)} 
-              editStudent={editingStudent || undefined}
+              onCancel={() => setView('sheet')} 
+              editStudent={editingStudent || undefined} 
             />
           </div>
-        ) : (
-          <div className="animate-in fade-in duration-500">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-2xl font-bold text-slate-800">
-                  {view === 'sheet' ? `Class ${activeClass} Result Sheet` : `Class ${activeClass} Analytics`}
-                </h2>
-                <p className="text-sm text-slate-500">
-                  {classResults.length} records found for current session
-                </p>
-              </div>
-            </div>
-
-            {view === 'sheet' ? (
-              <ResultTable 
-                results={classResults} 
-                classLevel={activeClass}
-                onEdit={handleEdit}
-                onDelete={handleDelete}
-              />
-            ) : (
-              <Dashboard results={classResults} className={activeClass} />
-            )}
+        ) : view === 'subject-entry' ? (
+          <div className="max-w-5xl mx-auto">
+            <SubjectEntryForm 
+              classLevel={activeClass} 
+              students={students.filter(s => s.classLevel === activeClass)} 
+              onSave={handleBulkUpdate} 
+              onCancel={() => setView('sheet')} 
+              initialMaxMarks={maxMarks}
+            />
           </div>
+        ) : view === 'dashboard' ? (
+          <Dashboard results={classResults} className={activeClass} />
+        ) : (
+          <ResultTable results={classResults} classLevel={activeClass} onEdit={handleEdit} onDelete={handleDelete} />
         )}
       </main>
 
-      {/* Footer / Status Bar */}
-      <footer className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-md border-t border-slate-200 py-3 px-6 text-center text-xs text-slate-400 font-medium z-40">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-            <span>System Active</span>
+      {/* Footer Utility Bar */}
+      <footer className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-slate-200 py-3 px-6 z-50">
+        <div className="max-w-7xl mx-auto flex items-center justify-between text-[10px] font-black uppercase tracking-widest">
+          <div className="flex items-center space-x-6">
+            <div className="flex items-center text-slate-400">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 mr-2"></span>
+              System Database Ready
+            </div>
+            <div className="text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
+              Current Exam Cycle: {maxMarks === 20 ? 'Bimonthly' : maxMarks === 80 ? 'Term Exam' : 'Final Exam'} ({maxMarks} Marks)
+            </div>
           </div>
-          <div>EduRank Result Management v2.1.0</div>
-          <div className="hidden sm:block">Local Database • Punjab School Education Board Standards</div>
+          <div className="text-slate-300 hidden sm:block">
+            PSEB Punjab Standard Compliant • V3.2.0
+          </div>
         </div>
       </footer>
     </div>
