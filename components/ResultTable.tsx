@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { CalculatedResult, ClassLevel, SubjectType } from '../types';
+import { CalculatedResult, ClassLevel, SubjectType, StudentMarks } from '../types';
 import { GET_SUBJECTS_FOR_CLASS } from '../constants';
 
 interface ResultTableProps {
@@ -8,9 +8,10 @@ interface ResultTableProps {
   classLevel: ClassLevel;
   onEdit: (student: CalculatedResult) => void;
   onDelete: (id: string) => void;
+  highlightSubject?: keyof StudentMarks | null;
 }
 
-const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, onDelete }) => {
+const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, onDelete, highlightSubject }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const subjects = GET_SUBJECTS_FOR_CLASS(classLevel);
 
@@ -26,25 +27,26 @@ const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, 
 
   return (
     <div className="space-y-4">
-      {/* Search Bar */}
-      <div className="relative max-w-md">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          <i className="fa-solid fa-magnifying-glass text-slate-400"></i>
+      <div className="flex items-center justify-between">
+        <div className="relative max-w-md w-full">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <i className="fa-solid fa-magnifying-glass text-slate-400"></i>
+          </div>
+          <input
+            type="text"
+            placeholder="Search student by Name or Roll No..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="block w-full pl-10 pr-3 py-2 border border-slate-200 rounded-lg leading-5 bg-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-all shadow-sm"
+          />
         </div>
-        <input
-          type="text"
-          placeholder="Search by Name or Roll No..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="block w-full pl-10 pr-3 py-2 border border-slate-200 rounded-lg leading-5 bg-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-all shadow-sm"
-        />
-        {searchTerm && (
-          <button
-            onClick={() => setSearchTerm('')}
-            className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
-          >
-            <i className="fa-solid fa-circle-xmark"></i>
-          </button>
+        {highlightSubject && (
+          <div className="flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-200 rounded-full animate-in fade-in zoom-in-95 duration-200">
+            <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Sorted By:</span>
+            <span className="text-xs font-black text-indigo-700 uppercase">
+              {subjects.find(s => s.key === highlightSubject)?.label || highlightSubject}
+            </span>
+          </div>
         )}
       </div>
 
@@ -54,11 +56,12 @@ const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, 
             <thead className="text-xs text-slate-600 uppercase bg-slate-50 border-b border-slate-200">
               <tr>
                 <th className="px-4 py-4 font-bold sticky left-0 bg-slate-50 z-20 border-r border-slate-200">Roll No</th>
-                <th className="px-4 py-4 font-bold sticky left-[4.55rem] bg-slate-50 z-20 border-r border-slate-200">Name & Status</th>
+                <th className="px-4 py-4 font-bold sticky left-[4.55rem] bg-slate-50 z-20 border-r border-slate-200">Student Info</th>
                 {subjects.map(sub => (
                   <th 
                     key={sub.key} 
-                    className={`px-4 py-4 text-center font-bold border-r border-slate-100 whitespace-nowrap ${
+                    className={`px-4 py-4 text-center font-bold border-r border-slate-100 whitespace-nowrap transition-colors ${
+                      sub.key === highlightSubject ? 'bg-indigo-600 text-white z-30' : 
                       sub.type === SubjectType.GRADING ? 'bg-orange-50/80 text-orange-800' : ''
                     }`}
                   >
@@ -75,7 +78,7 @@ const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, 
               {filteredResults.length === 0 ? (
                 <tr>
                   <td colSpan={subjects.length + 6} className="px-4 py-12 text-center text-slate-400 italic bg-white">
-                    {searchTerm ? `No matching records for "${searchTerm}"` : `No records found for Class ${classLevel}.`}
+                    No results found.
                   </td>
                 </tr>
               ) : (
@@ -84,18 +87,18 @@ const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, 
                     <td className="px-4 py-4 font-semibold text-slate-700 sticky left-0 bg-white group-hover:bg-slate-50/80 z-10 border-r border-slate-100">
                       {res.rollNo}
                     </td>
-                    <td className="px-4 py-4 sticky left-[4.55rem] bg-white group-hover:bg-slate-50/80 z-10 border-r border-slate-200">
-                      <div className="flex flex-col space-y-1">
-                        <span className="font-bold text-slate-800 truncate max-w-[150px]" title={res.name}>
+                    <td className="px-4 py-4 sticky left-[4.55rem] bg-white group-hover:bg-slate-50/80 z-10 border-r border-slate-200 min-w-[200px]">
+                      <div className="flex flex-col space-y-2">
+                        <span className="font-bold text-slate-800 truncate" title={res.name}>
                           {res.name}
                         </span>
                         <div className="flex">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tighter border ${
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider border shadow-sm ${
                             res.status === 'Pass' 
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200/50' 
-                            : 'bg-red-50 text-red-700 border-red-200/50'
+                            ? 'bg-emerald-500 text-white border-emerald-600' 
+                            : 'bg-red-500 text-white border-red-600'
                           }`}>
-                            <span className={`w-1 h-1 rounded-full mr-1 ${res.status === 'Pass' ? 'bg-emerald-500' : 'bg-red-500'}`}></span>
+                            <i className={`fa-solid ${res.status === 'Pass' ? 'fa-circle-check' : 'fa-circle-xmark'} mr-1.5`}></i>
                             {res.status}
                           </span>
                         </div>
@@ -104,14 +107,16 @@ const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, 
                     {subjects.map(sub => {
                       const score = res.marks[sub.key] ?? 0;
                       const isFail = sub.type === SubjectType.MAIN && score < 33;
+                      const isHighligted = sub.key === highlightSubject;
                       return (
                         <td 
                           key={sub.key} 
-                          className={`px-4 py-4 text-center border-r border-slate-100 ${
+                          className={`px-4 py-4 text-center border-r border-slate-100 transition-colors ${
+                            isHighligted ? 'bg-indigo-50 font-black scale-105 shadow-inner' : 
                             sub.type === SubjectType.GRADING ? 'bg-orange-50/20 italic' : ''
                           }`}
                         >
-                          <span className={`text-sm ${isFail ? 'text-red-600 font-extrabold underline decoration-red-200 underline-offset-4' : 'text-slate-600 font-medium'}`}>
+                          <span className={`text-sm ${isFail ? 'text-red-600 font-extrabold underline decoration-red-200 underline-offset-4' : isHighligted ? 'text-indigo-800' : 'text-slate-600 font-medium'}`}>
                             {res.marks[sub.key] ?? '-'}
                           </span>
                         </td>
@@ -124,33 +129,19 @@ const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, 
                       {res.percentage}%
                     </td>
                     <td className="px-4 py-4 text-center border-r border-slate-100">
-                      <span className={`inline-flex items-center justify-center w-7 h-7 rounded-lg font-black text-xs ${
-                        res.rank === 1 ? 'bg-yellow-400 text-yellow-900 shadow-sm' :
-                        res.rank === 2 ? 'bg-slate-300 text-slate-800' :
-                        res.rank === 3 ? 'bg-amber-600 text-white' :
-                        'bg-slate-100 text-slate-500'
+                      <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg font-black text-xs ${
+                        res.rank === 1 ? 'bg-yellow-400 text-yellow-900 shadow-md ring-2 ring-yellow-200' :
+                        res.rank === 2 ? 'bg-slate-200 text-slate-800' :
+                        res.rank === 3 ? 'bg-amber-100 text-amber-900' :
+                        'bg-slate-50 text-slate-400'
                       }`}>
                         {res.rank}
                       </span>
                     </td>
                     <td className="px-4 py-4 text-center bg-white/50 group-hover:bg-transparent">
                       <div className="flex items-center justify-center space-x-1">
-                        <button 
-                          onClick={() => onEdit(res)}
-                          className="w-8 h-8 flex items-center justify-center text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-all"
-                          title="Edit Student"
-                        >
-                          <i className="fa-solid fa-pen-to-square text-xs"></i>
-                        </button>
-                        <button 
-                          onClick={() => {
-                            if (confirm(`Are you sure you want to delete ${res.name}'s record?`)) onDelete(res.id);
-                          }}
-                          className="w-8 h-8 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition-all"
-                          title="Delete Record"
-                        >
-                          <i className="fa-solid fa-trash-can text-xs"></i>
-                        </button>
+                        <button onClick={() => onEdit(res)} className="w-8 h-8 flex items-center justify-center text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-all"><i className="fa-solid fa-pen-to-square"></i></button>
+                        <button onClick={() => confirm(`Delete ${res.name}?`) && onDelete(res.id)} className="w-8 h-8 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition-all"><i className="fa-solid fa-trash-can"></i></button>
                       </div>
                     </td>
                   </tr>

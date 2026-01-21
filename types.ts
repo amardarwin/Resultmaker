@@ -41,3 +41,9 @@ export interface SubjectConfig {
   label: string;
   type: SubjectType;
 }
+
+export interface ColumnMapping {
+  rollNo: string;
+  name: string;
+  subjectMapping: Record<string, string>; // subjectKey -> csvHeader
+}
