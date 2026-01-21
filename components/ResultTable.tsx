@@ -4,6 +4,7 @@ import { CalculatedResult, ClassLevel, SubjectType, StudentMarks, Role } from '.
 import { GET_SUBJECTS_FOR_CLASS } from '../constants';
 import { generateStudentRemarks } from '../utils/gemini';
 import { useAuth } from '../contexts/AuthContext';
+import { getColumnPermission, canPerformAdminAction } from '../utils/permissions';
 
 interface ResultTableProps {
   results: CalculatedResult[];
@@ -14,7 +15,7 @@ interface ResultTableProps {
 }
 
 const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, onDelete, highlightSubject }) => {
-  const { user, canEditStudent, canEditSubject } = useAuth();
+  const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [remarks, setRemarks] = useState<Record<string, string>>({});
   const [loadingRemarks, setLoadingRemarks] = useState<Record<string, boolean>>({});
@@ -37,155 +38,173 @@ const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, 
     setLoadingRemarks(prev => ({ ...prev, [student.id]: false }));
   };
 
+  const isAdminAuthorized = canPerformAdminAction(user, classLevel);
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="relative max-w-md w-full">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <i className="fa-solid fa-magnifying-glass text-slate-400"></i>
           </div>
           <input
             type="text"
-            placeholder="Search student by Name or Roll No..."
+            placeholder="Search result sheet..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="block w-full pl-10 pr-3 py-2 border border-slate-200 rounded-lg leading-5 bg-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-all shadow-sm"
+            className="block w-full pl-10 pr-3 py-3 border-2 border-slate-100 rounded-2xl bg-white placeholder-slate-400 focus:outline-none focus:border-indigo-500 font-bold transition-all shadow-sm"
           />
         </div>
         {highlightSubject && (
-          <div className="flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-200 rounded-full animate-in fade-in zoom-in-95 duration-200">
-            <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Sorted By:</span>
-            <span className="text-xs font-black text-indigo-700 uppercase">
+          <div className="flex items-center gap-2 px-6 py-2 bg-indigo-600 text-white rounded-2xl animate-in fade-in zoom-in-95 duration-200 shadow-lg shadow-indigo-100">
+            <span className="text-[10px] font-black uppercase tracking-widest">Sorting Focus:</span>
+            <span className="text-xs font-black uppercase">
               {subjects.find(s => s.key === highlightSubject)?.label || highlightSubject}
             </span>
+            <i className="fa-solid fa-arrow-down-9-1 text-[10px] ml-1"></i>
           </div>
         )}
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className="bg-white rounded-[32px] shadow-sm border border-slate-100 overflow-hidden">
+        <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full text-sm text-left border-collapse">
-            <thead className="text-xs text-slate-600 uppercase bg-slate-50 border-b border-slate-200">
+            <thead className="text-[10px] text-slate-400 font-black uppercase bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="px-4 py-4 font-bold sticky left-0 bg-slate-50 z-20 border-r border-slate-200">Roll No</th>
-                <th className="px-4 py-4 font-bold sticky left-[4.55rem] bg-slate-50 z-20 border-r border-slate-200">Student Info</th>
-                {subjects.map(sub => (
-                  <th 
-                    key={sub.key} 
-                    className={`px-4 py-4 text-center font-bold border-r border-slate-100 whitespace-nowrap transition-colors ${
-                      sub.key === highlightSubject ? 'bg-indigo-600 text-white z-30' : 
-                      sub.type === SubjectType.GRADING ? 'bg-orange-50/80 text-orange-800' : ''
-                    } ${!canEditSubject(sub.key, classLevel) ? 'opacity-50' : ''}`}
-                  >
-                    {sub.label} {!canEditSubject(sub.key, classLevel) && <i className="fa-solid fa-lock text-[8px] ml-1"></i>}
-                  </th>
-                ))}
-                <th className="px-4 py-4 text-center font-bold bg-blue-50/50 text-blue-800 border-r border-slate-100">Total</th>
-                <th className="px-4 py-4 text-center font-bold bg-blue-50/50 text-blue-800 border-r border-slate-100">Perc.</th>
-                <th className="px-4 py-4 text-center font-bold bg-indigo-50/50 text-indigo-800 border-r border-slate-100">Rank</th>
-                {user?.role !== Role.STUDENT && <th className="px-4 py-4 text-center font-bold bg-slate-50">Actions</th>}
+                <th className="px-6 py-5 sticky left-0 bg-slate-50 z-20 border-r border-slate-100">Roll No</th>
+                <th className="px-6 py-5 sticky left-[84px] bg-slate-50 z-20 border-r border-slate-200">Student Info</th>
+                
+                {subjects.map(sub => {
+                  const perm = getColumnPermission(user, classLevel, sub.key);
+                  const isLocked = perm === 'READ';
+                  return (
+                    <th 
+                      key={sub.key} 
+                      className={`px-4 py-5 text-center whitespace-nowrap border-r border-slate-100 transition-all ${
+                        sub.key === highlightSubject ? 'bg-indigo-600 text-white z-30' : 
+                        sub.type === SubjectType.GRADING ? 'bg-orange-50/50 text-orange-800 italic' : ''
+                      } ${isLocked ? 'opacity-40' : ''}`}
+                    >
+                      <div className="flex items-center justify-center gap-2">
+                        {sub.label}
+                        {isLocked && <i className="fa-solid fa-lock text-[8px] mb-0.5"></i>}
+                      </div>
+                    </th>
+                  );
+                })}
+                
+                <th className="px-6 py-5 text-center font-black text-blue-800 bg-blue-50/50 border-r border-slate-100">Total</th>
+                <th className="px-6 py-5 text-center font-black text-emerald-800 bg-emerald-50/50 border-r border-slate-100">%</th>
+                <th className="px-6 py-5 text-center font-black text-slate-800 bg-slate-50/50 border-r border-slate-100">Rank</th>
+                {user?.role !== Role.STUDENT && <th className="px-6 py-5 text-center">Control</th>}
               </tr>
             </thead>
+            
             <tbody className="divide-y divide-slate-100">
               {filteredResults.length === 0 ? (
                 <tr>
-                  <td colSpan={subjects.length + 6} className="px-4 py-12 text-center text-slate-400 italic bg-white">
-                    No results found.
+                  <td colSpan={subjects.length + 6} className="px-6 py-20 text-center text-slate-400 italic bg-white">
+                    <div className="flex flex-col items-center">
+                       <i className="fa-solid fa-folder-open text-4xl mb-4 opacity-20"></i>
+                       <p className="font-black text-sm uppercase tracking-widest">No matching student records</p>
+                    </div>
                   </td>
                 </tr>
               ) : (
                 filteredResults.map((res) => (
                   <React.Fragment key={res.id}>
-                    <tr className="hover:bg-slate-50/80 transition-colors group">
-                      <td className="px-4 py-4 font-semibold text-slate-700 sticky left-0 bg-white group-hover:bg-slate-50/80 z-10 border-r border-slate-100">
+                    <tr className="hover:bg-slate-50/50 transition-colors group">
+                      <td className="px-6 py-5 font-black text-slate-500 sticky left-0 bg-white group-hover:bg-slate-50/50 z-10 border-r border-slate-100">
                         {res.rollNo}
                       </td>
-                      <td className="px-4 py-4 sticky left-[4.55rem] bg-white group-hover:bg-slate-50/80 z-10 border-r border-slate-200 min-w-[200px]">
-                        <div className="flex flex-col space-y-2">
-                          <span className="font-bold text-slate-800 truncate" title={res.name}>
+                      <td className="px-6 py-5 sticky left-[84px] bg-white group-hover:bg-slate-50/50 z-10 border-r border-slate-200 min-w-[220px]">
+                        <div className="flex flex-col">
+                          <span className="font-black text-slate-800 truncate" title={res.name}>
                             {res.name}
                           </span>
-                          <div className="flex items-center gap-2">
-                            <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider border shadow-sm ${
-                              res.status === 'Pass' 
-                              ? 'bg-emerald-500 text-white border-emerald-600' 
-                              : 'bg-red-500 text-white border-red-600'
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter ${
+                              res.status === 'Pass' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'
                             }`}>
-                              <i className={`fa-solid ${res.status === 'Pass' ? 'fa-circle-check' : 'fa-circle-xmark'} mr-1.5`}></i>
                               {res.status}
                             </span>
                             {user?.role !== Role.STUDENT && (
                               <button 
                                 onClick={() => handleGenerateRemark(res)}
-                                disabled={loadingRemarks[res.id]}
-                                className="text-[10px] bg-indigo-50 text-indigo-600 border border-indigo-100 px-2 py-1 rounded font-black hover:bg-indigo-600 hover:text-white transition-all"
+                                className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all"
                               >
-                                {loadingRemarks[res.id] ? <i className="fa-solid fa-spinner animate-spin"></i> : <i className="fa-solid fa-sparkles"></i>} AI
+                                {loadingRemarks[res.id] ? <i className="fa-solid fa-spinner animate-spin"></i> : <i className="fa-solid fa-wand-magic-sparkles"></i>}
                               </button>
                             )}
                           </div>
                         </div>
                       </td>
+                      
                       {subjects.map(sub => {
                         const score = res.marks[sub.key] ?? 0;
                         const isFail = sub.type === SubjectType.MAIN && score < 33;
-                        const isHighligted = sub.key === highlightSubject;
+                        const perm = getColumnPermission(user, classLevel, sub.key);
+                        const isLocked = perm === 'READ';
+                        const isHighlighted = sub.key === highlightSubject;
+                        
                         return (
                           <td 
                             key={sub.key} 
-                            className={`px-4 py-4 text-center border-r border-slate-100 transition-colors ${
-                              isHighligted ? 'bg-indigo-50 font-black scale-105 shadow-inner' : 
-                              sub.type === SubjectType.GRADING ? 'bg-orange-50/20 italic' : ''
-                            } ${!canEditSubject(sub.key, classLevel) ? 'bg-slate-50/50' : ''}`}
+                            className={`px-4 py-5 text-center border-r border-slate-100 transition-colors ${
+                              isHighlighted ? 'bg-slate-900 text-white font-black' : 
+                              isLocked ? 'bg-slate-50 opacity-40' : ''
+                            }`}
                           >
-                            <span className={`text-sm ${isFail ? 'text-red-600 font-extrabold underline decoration-red-200 underline-offset-4' : isHighligted ? 'text-indigo-800' : 'text-slate-600 font-medium'} ${!canEditSubject(sub.key, classLevel) ? 'opacity-40' : ''}`}>
+                            <span className={`text-sm font-bold ${isFail ? 'text-red-600' : ''} ${isHighlighted ? 'text-white' : 'text-slate-600'}`}>
                               {res.marks[sub.key] ?? '-'}
                             </span>
                           </td>
                         );
                       })}
-                      <td className="px-4 py-4 text-center font-black text-blue-700 bg-blue-50/20 border-r border-slate-100">
+                      
+                      <td className="px-6 py-5 text-center font-black text-blue-700 bg-blue-50/10 border-r border-slate-100">
                         {res.total}
                       </td>
-                      <td className="px-4 py-4 text-center font-bold text-blue-600 bg-blue-50/20 border-r border-slate-100">
+                      <td className="px-6 py-5 text-center font-black text-emerald-700 bg-emerald-50/10 border-r border-slate-100">
                         {res.percentage}%
                       </td>
-                      <td className="px-4 py-4 text-center border-r border-slate-100">
-                        <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg font-black text-xs ${
-                          res.rank === 1 ? 'bg-yellow-400 text-yellow-900 shadow-md ring-2 ring-yellow-200' :
-                          res.rank === 2 ? 'bg-slate-200 text-slate-800' :
-                          res.rank === 3 ? 'bg-amber-100 text-amber-900' :
+                      <td className="px-6 py-5 text-center border-r border-slate-100">
+                        <span className={`inline-flex items-center justify-center w-8 h-8 rounded-xl font-black text-xs ${
+                          res.rank === 1 ? 'bg-yellow-400 text-white shadow-lg shadow-yellow-100' :
+                          res.rank === 2 ? 'bg-slate-200 text-slate-600' :
+                          res.rank === 3 ? 'bg-amber-100 text-amber-700' :
                           'bg-slate-50 text-slate-400'
                         }`}>
                           {res.rank}
                         </span>
                       </td>
+                      
                       {user?.role !== Role.STUDENT && (
-                        <td className="px-4 py-4 text-center bg-white/50 group-hover:bg-transparent">
-                          {canEditStudent(classLevel) ? (
-                            <div className="flex items-center justify-center space-x-1">
-                              <button onClick={() => onEdit(res)} className="w-8 h-8 flex items-center justify-center text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-all"><i className="fa-solid fa-pen-to-square"></i></button>
-                              <button onClick={() => confirm(`Delete ${res.name}?`) && onDelete(res.id)} className="w-8 h-8 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition-all"><i className="fa-solid fa-trash-can"></i></button>
+                        <td className="px-6 py-5 text-center">
+                          {isAdminAuthorized ? (
+                            <div className="flex items-center justify-center gap-2">
+                              <button onClick={() => onEdit(res)} className="w-8 h-8 flex items-center justify-center text-indigo-400 hover:bg-indigo-600 hover:text-white rounded-xl transition-all"><i className="fa-solid fa-pen"></i></button>
+                              <button onClick={() => confirm(`Permanently delete ${res.name}?`) && onDelete(res.id)} className="w-8 h-8 flex items-center justify-center text-red-300 hover:bg-red-600 hover:text-white rounded-xl transition-all"><i className="fa-solid fa-trash"></i></button>
                             </div>
                           ) : (
-                            <i className="fa-solid fa-lock text-slate-300"></i>
+                            <i className="fa-solid fa-lock text-slate-200"></i>
                           )}
                         </td>
                       )}
                     </tr>
+                    
                     {remarks[res.id] && (
                       <tr className="bg-indigo-50/30">
-                        <td colSpan={subjects.length + 6} className="px-6 py-2 border-b border-indigo-100">
-                          <div className="flex items-center gap-3 text-indigo-700 italic">
-                            <i className="fa-solid fa-quote-left opacity-30 text-xs"></i>
-                            <span className="text-xs font-semibold">{remarks[res.id]}</span>
-                            <i className="fa-solid fa-quote-right opacity-30 text-xs"></i>
+                        <td colSpan={subjects.length + 6} className="px-8 py-4 border-b border-indigo-100">
+                          <div className="flex items-center gap-4">
+                            <div className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse"></div>
+                            <p className="text-xs font-bold text-indigo-700 italic tracking-tight">"{remarks[res.id]}"</p>
                             <button onClick={() => setRemarks(prev => {
                               const next = {...prev};
                               delete next[res.id];
                               return next;
                             })} className="ml-auto text-indigo-300 hover:text-indigo-600">
-                              <i className="fa-solid fa-xmark text-[10px]"></i>
+                              <i className="fa-solid fa-circle-xmark"></i>
                             </button>
                           </div>
                         </td>
