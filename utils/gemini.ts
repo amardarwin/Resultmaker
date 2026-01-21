@@ -2,10 +2,20 @@
 import { GoogleGenAI } from "@google/genai";
 import { CalculatedResult, ClassLevel } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+// Safe helper to get the AI instance only if the key exists
+const getAI = () => {
+  try {
+    const apiKey = typeof process !== 'undefined' && process.env ? process.env.API_KEY : undefined;
+    if (!apiKey) return null;
+    return new GoogleGenAI({ apiKey });
+  } catch (e) {
+    return null;
+  }
+};
 
 export const generateClassInsights = async (results: CalculatedResult[], classLevel: ClassLevel) => {
-  if (results.length === 0) return "No data available for analysis.";
+  const ai = getAI();
+  if (!ai || results.length === 0) return "AI Insights unavailable. Ensure API key is configured.";
 
   const summaryData = results.map(r => ({
     name: r.name,
@@ -14,13 +24,9 @@ export const generateClassInsights = async (results: CalculatedResult[], classLe
     marks: r.marks
   }));
 
-  const prompt = `Analyze the following academic results for Class ${classLevel} and provide a concise strategic summary (3-4 bullet points). 
-  Identify:
-  1. Overall class performance trend.
-  2. Subjects that seem to be the strongest/weakest based on the marks.
-  3. Actionable advice for teachers to improve results.
-  
-  Data: ${JSON.stringify(summaryData.slice(0, 15))} (Analysis limited to top 15 students for brevity)`;
+  const prompt = `Analyze the academic results for Class ${classLevel} and provide a 3-bullet point strategic summary. 
+  Focus on: Overall trend, strongest/weakest subjects, and one piece of advice.
+  Data: ${JSON.stringify(summaryData.slice(0, 15))}`;
 
   try {
     const response = await ai.models.generateContent({
@@ -30,14 +36,15 @@ export const generateClassInsights = async (results: CalculatedResult[], classLe
     return response.text;
   } catch (error) {
     console.error("Gemini Error:", error);
-    return "Failed to generate AI insights at this time.";
+    return "The AI is currently busy. Please try again later.";
   }
 };
 
 export const generateStudentRemarks = async (student: CalculatedResult) => {
-  const prompt = `Write a personalized, encouraging, and professional one-sentence academic remark for a student named ${student.name} who achieved a ${student.percentage}% and is ranked ${student.rank}. 
-  Their marks are: ${JSON.stringify(student.marks)}. 
-  Mention a specific strength or area for improvement based on their marks. Keep it under 20 words.`;
+  const ai = getAI();
+  if (!ai) return "Keep up the effort!";
+
+  const prompt = `Write a 15-word encouraging remark for ${student.name} (${student.percentage}%). Mention a specific subject strength from: ${JSON.stringify(student.marks)}.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -46,7 +53,6 @@ export const generateStudentRemarks = async (student: CalculatedResult) => {
     });
     return response.text;
   } catch (error) {
-    console.error("Gemini Error:", error);
-    return "Keep up the hard work!";
+    return "Great work this term! Continue focusing on your studies.";
   }
 };
