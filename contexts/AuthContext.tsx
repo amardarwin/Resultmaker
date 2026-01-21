@@ -8,6 +8,7 @@ interface AuthContextType {
   staffUsers: StaffUser[];
   setupSchool: (config: SchoolConfig) => void;
   addStaff: (staff: StaffUser) => void;
+  updateStaff: (staff: StaffUser) => void;
   removeStaff: (id: string) => void;
   login: (credentials: { username: string; pass: string; role: Role; classLevel?: ClassLevel; rollNo?: string }) => boolean;
   logout: () => void;
@@ -47,6 +48,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setStaffUsers(prev => [...prev, staff]);
   };
 
+  const updateStaff = (updatedStaff: StaffUser) => {
+    setStaffUsers(prev => prev.map(s => s.id === updatedStaff.id ? updatedStaff : s));
+    // If the logged-in user is the one being updated, refresh the session
+    if (user?.id === updatedStaff.id) {
+      const { password, ...safeUser } = updatedStaff;
+      setUser(safeUser);
+      localStorage.setItem('edurank_active_session', JSON.stringify(safeUser));
+    }
+  };
+
   const removeStaff = (id: string) => {
     setStaffUsers(prev => prev.filter(s => s.id !== id));
   };
@@ -67,8 +78,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } else if (creds.role === Role.STUDENT) {
       const students: Student[] = JSON.parse(localStorage.getItem('school_results_students') || '[]');
       const student = students.find(s => s.classLevel === creds.classLevel && s.rollNo === creds.rollNo);
-      if (student && creds.pass === '1234') {
-        authUser = { id: student.id, username: student.rollNo, name: student.name, role: Role.STUDENT, assignedClass: student.classLevel, rollNo: student.rollNo };
+      
+      // Use custom password if set, otherwise default to '1234'
+      const correctPassword = student?.password || '1234';
+      
+      if (student && creds.pass === correctPassword) {
+        authUser = { 
+          id: student.id, 
+          username: student.rollNo, 
+          name: student.name, 
+          role: Role.STUDENT, 
+          assignedClass: student.classLevel, 
+          rollNo: student.rollNo 
+        };
       }
     }
 
@@ -104,7 +126,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   return (
     <AuthContext.Provider value={{ 
-      user, schoolConfig, staffUsers, setupSchool, addStaff, removeStaff, login, logout, canEditStudent, canEditSubject, isViewRestricted 
+      user, schoolConfig, staffUsers, setupSchool, addStaff, updateStaff, removeStaff, login, logout, canEditStudent, canEditSubject, isViewRestricted 
     }}>
       {children}
     </AuthContext.Provider>

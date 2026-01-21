@@ -50,6 +50,7 @@ export interface Student {
   classLevel: ClassLevel;
   marks: StudentMarks;
   manualTotal?: number;
+  password?: string; // Custom portal password
 }
 
 export interface CalculatedResult extends Student {

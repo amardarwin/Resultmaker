@@ -1,13 +1,13 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-// Fix: Moved ALL_CLASSES import to constants
 import { Role, StaffUser } from '../types';
 import { ALL_CLASSES, GET_SUBJECTS_FOR_CLASS } from '../constants';
 
 const StaffManagement: React.FC = () => {
-  const { staffUsers, addStaff, removeStaff } = useAuth();
+  const { staffUsers, addStaff, updateStaff, removeStaff } = useAuth();
   const [showForm, setShowForm] = useState(false);
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<StaffUser>>({
     name: '',
     username: '',
@@ -17,21 +17,47 @@ const StaffManagement: React.FC = () => {
     assignedSubject: 'math'
   });
 
-  const subjects = GET_SUBJECTS_FOR_CLASS('10'); // Sample list
+  const subjects = GET_SUBJECTS_FOR_CLASS('10'); // Default for list populate
+
+  const handleEditClick = (user: StaffUser) => {
+    setEditingUserId(user.id);
+    setFormData({
+      ...user,
+      password: user.password || '' // Pre-fill or leave empty for reset
+    });
+    setShowForm(true);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const newStaff: StaffUser = {
-      id: Date.now().toString(),
-      name: formData.name!,
-      username: formData.username!,
-      password: formData.password!,
-      role: formData.role!,
-      assignedClass: formData.role === Role.CLASS_INCHARGE ? formData.assignedClass : undefined,
-      assignedSubject: formData.role === Role.SUBJECT_TEACHER ? formData.assignedSubject : undefined,
-    };
-    addStaff(newStaff);
+    
+    if (editingUserId) {
+      const updatedStaff: StaffUser = {
+        ...formData as StaffUser,
+        id: editingUserId,
+        assignedClass: formData.role === Role.CLASS_INCHARGE ? formData.assignedClass : undefined,
+        assignedSubject: formData.role === Role.SUBJECT_TEACHER ? formData.assignedSubject : undefined,
+      };
+      updateStaff(updatedStaff);
+    } else {
+      const newStaff: StaffUser = {
+        id: Date.now().toString(),
+        name: formData.name!,
+        username: formData.username!,
+        password: formData.password!,
+        role: formData.role!,
+        assignedClass: formData.role === Role.CLASS_INCHARGE ? formData.assignedClass : undefined,
+        assignedSubject: formData.role === Role.SUBJECT_TEACHER ? formData.assignedSubject : undefined,
+      };
+      addStaff(newStaff);
+    }
+    
+    resetForm();
+  };
+
+  const resetForm = () => {
     setShowForm(false);
+    setEditingUserId(null);
     setFormData({ name: '', username: '', password: '', role: Role.CLASS_INCHARGE });
   };
 
@@ -43,8 +69,8 @@ const StaffManagement: React.FC = () => {
           <p className="text-slate-400 text-xs font-bold uppercase mt-1">Manage Teacher Access & Permissions</p>
         </div>
         <button 
-          onClick={() => setShowForm(!showForm)}
-          className="px-6 py-2.5 bg-indigo-600 text-white font-black rounded-xl text-xs flex items-center gap-2 shadow-lg"
+          onClick={() => { if (showForm) resetForm(); else setShowForm(true); }}
+          className="px-6 py-2.5 bg-indigo-600 text-white font-black rounded-xl text-xs flex items-center gap-2 shadow-lg hover:bg-indigo-700 transition-all"
         >
           <i className={`fa-solid ${showForm ? 'fa-xmark' : 'fa-user-plus'}`}></i>
           {showForm ? 'CANCEL' : 'CREATE USER'}
@@ -53,22 +79,28 @@ const StaffManagement: React.FC = () => {
 
       {showForm && (
         <form onSubmit={handleSubmit} className="bg-white p-8 rounded-3xl border-2 border-indigo-100 shadow-xl animate-in fade-in slide-in-from-top-4">
+          <h3 className="text-sm font-black text-indigo-600 uppercase mb-6 flex items-center gap-2">
+            <i className={`fa-solid ${editingUserId ? 'fa-pen-to-square' : 'fa-plus'}`}></i>
+            {editingUserId ? 'Edit Staff Member' : 'Add New Staff Member'}
+          </h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Full Name</label>
-              <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-3 bg-slate-50 border rounded-xl font-bold" />
+              <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-3 bg-slate-50 border rounded-xl font-bold focus:border-indigo-500 outline-none" />
             </div>
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Username</label>
-              <input required type="text" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} className="w-full p-3 bg-slate-50 border rounded-xl font-bold" />
+              <input required type="text" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} className="w-full p-3 bg-slate-50 border rounded-xl font-bold focus:border-indigo-500 outline-none" />
             </div>
             <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Password</label>
-              <input required type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full p-3 bg-slate-50 border rounded-xl font-bold" />
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">
+                {editingUserId ? 'Reset Password' : 'Password'}
+              </label>
+              <input required type="text" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full p-3 bg-slate-50 border border-indigo-100 rounded-xl font-bold focus:border-indigo-500 outline-none" placeholder={editingUserId ? "Enter new password" : "••••••••"} />
             </div>
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Role</label>
-              <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value as Role})} className="w-full p-3 bg-slate-50 border rounded-xl font-bold">
+              <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value as Role})} className="w-full p-3 bg-slate-50 border rounded-xl font-bold focus:border-indigo-500 outline-none">
                 <option value={Role.CLASS_INCHARGE}>Class Incharge</option>
                 <option value={Role.SUBJECT_TEACHER}>Subject Teacher</option>
               </select>
@@ -76,20 +108,22 @@ const StaffManagement: React.FC = () => {
             {formData.role === Role.CLASS_INCHARGE ? (
               <div>
                 <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Assigned Class</label>
-                <select value={formData.assignedClass} onChange={e => setFormData({...formData, assignedClass: e.target.value as any})} className="w-full p-3 bg-slate-50 border rounded-xl font-bold">
+                <select value={formData.assignedClass} onChange={e => setFormData({...formData, assignedClass: e.target.value as any})} className="w-full p-3 bg-slate-50 border rounded-xl font-bold focus:border-indigo-500 outline-none">
                   {ALL_CLASSES.map(c => <option key={c} value={c}>Class {c}</option>)}
                 </select>
               </div>
             ) : (
               <div>
                 <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Assigned Subject</label>
-                <select value={formData.assignedSubject} onChange={e => setFormData({...formData, assignedSubject: e.target.value as any})} className="w-full p-3 bg-slate-50 border rounded-xl font-bold">
+                <select value={formData.assignedSubject} onChange={e => setFormData({...formData, assignedSubject: e.target.value as any})} className="w-full p-3 bg-slate-50 border rounded-xl font-bold focus:border-indigo-500 outline-none">
                   {subjects.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
                 </select>
               </div>
             )}
             <div className="flex items-end">
-              <button type="submit" className="w-full py-3 bg-indigo-600 text-white font-black rounded-xl">SAVE USER</button>
+              <button type="submit" className="w-full py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 uppercase text-xs tracking-wider">
+                {editingUserId ? 'Update User' : 'Save User'}
+              </button>
             </div>
           </div>
         </form>
@@ -111,7 +145,7 @@ const StaffManagement: React.FC = () => {
               <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400 font-bold italic">No staff users created yet.</td></tr>
             ) : (
               staffUsers.map(user => (
-                <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+                <tr key={user.id} className="hover:bg-slate-50 transition-colors group">
                   <td className="px-6 py-4 font-black text-slate-800">{user.name}</td>
                   <td className="px-6 py-4 font-bold text-slate-500">{user.username}</td>
                   <td className="px-6 py-4">
@@ -123,9 +157,22 @@ const StaffManagement: React.FC = () => {
                     {user.role === Role.CLASS_INCHARGE ? `Class ${user.assignedClass}` : `Subject: ${user.assignedSubject}`}
                   </td>
                   <td className="px-6 py-4 text-center">
-                    <button onClick={() => removeStaff(user.id)} className="text-red-400 hover:text-red-600 transition-colors">
-                      <i className="fa-solid fa-trash"></i>
-                    </button>
+                    <div className="flex items-center justify-center gap-2">
+                      <button 
+                        onClick={() => handleEditClick(user)} 
+                        className="w-8 h-8 flex items-center justify-center bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-all"
+                        title="Edit User"
+                      >
+                        <i className="fa-solid fa-pen-to-square"></i>
+                      </button>
+                      <button 
+                        onClick={() => confirm(`Permanently delete ${user.name}?`) && removeStaff(user.id)} 
+                        className="w-8 h-8 flex items-center justify-center bg-red-50 text-red-400 hover:bg-red-600 hover:text-white rounded-lg transition-all"
+                        title="Delete User"
+                      >
+                        <i className="fa-solid fa-trash"></i>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
