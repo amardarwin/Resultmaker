@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { Student, ClassLevel, StudentMarks } from '../types';
+import { Student, ClassLevel, StudentMarks, Role } from '../types';
 import { GET_SUBJECTS_FOR_CLASS } from '../constants';
 import { exportAwardList } from '../utils/export';
+import { useAuth } from '../contexts/AuthContext';
 
 interface SubjectEntryFormProps {
   classLevel: ClassLevel;
@@ -13,8 +14,19 @@ interface SubjectEntryFormProps {
 }
 
 const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({ classLevel, students, onSave, onCancel, initialMaxMarks }) => {
+  const { user, canEditSubject } = useAuth();
   const subjects = GET_SUBJECTS_FOR_CLASS(classLevel);
-  const [selectedSubject, setSelectedSubject] = useState<keyof StudentMarks>(subjects[0].key);
+  
+  // Logic: If user is SUBJECT_TEACHER, default to their subject and restrict changes.
+  const [selectedSubject, setSelectedSubject] = useState<keyof StudentMarks>(() => {
+    if (user?.role === Role.SUBJECT_TEACHER && user.assignedSubject) {
+      // Check if the assigned subject exists in the current class config
+      const exists = subjects.some(s => s.key === user.assignedSubject);
+      return exists ? user.assignedSubject : subjects[0].key;
+    }
+    return subjects[0].key;
+  });
+
   const [localMarks, setLocalMarks] = useState<{ [studentId: string]: number }>({});
   const [subjectMaxMarks, setSubjectMaxMarks] = useState<Record<string, number>>(() => {
     const map: Record<string, number> = {};
@@ -43,6 +55,9 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({ classLevel, student
   };
 
   const handleSave = () => {
+    if (!canEditSubject(selectedSubject, classLevel)) {
+      return alert("Access Denied: You do not have permission to edit this subject's marks.");
+    }
     const updated = students.map(s => ({
       ...s,
       marks: { ...s.marks, [selectedSubject]: localMarks[s.id] || 0 }
@@ -56,6 +71,7 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({ classLevel, student
   };
 
   const subjectLabel = subjects.find(s => s.key === selectedSubject)?.label || '';
+  const isSubjectLocked = user?.role === Role.SUBJECT_TEACHER;
 
   return (
     <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-300">
@@ -75,8 +91,9 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({ classLevel, student
             <label className="text-[10px] font-black uppercase mb-1 text-indigo-200">Subject</label>
             <select 
               value={selectedSubject} 
+              disabled={isSubjectLocked}
               onChange={(e) => setSelectedSubject(e.target.value as keyof StudentMarks)}
-              className="bg-white text-slate-900 px-3 py-1.5 rounded-lg text-sm font-bold outline-none ring-2 ring-transparent focus:ring-indigo-300"
+              className="bg-white text-slate-900 px-3 py-1.5 rounded-lg text-sm font-bold outline-none ring-2 ring-transparent focus:ring-indigo-300 disabled:bg-slate-100 disabled:opacity-50"
             >
               {subjects.map(sub => (
                 <option key={sub.key} value={sub.key}>{sub.label} {sub.type === 'GRADING' ? '(G)' : ''}</option>
@@ -85,7 +102,7 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({ classLevel, student
           </div>
 
           <div className="flex flex-col">
-            <label className="text-[10px] font-black uppercase mb-1 text-indigo-200">Max Marks for {subjectLabel}</label>
+            <label className="text-[10px] font-black uppercase mb-1 text-indigo-200">Max Marks</label>
             <div className="flex items-center space-x-1">
               <input 
                 type="number"
@@ -93,13 +110,6 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({ classLevel, student
                 onChange={(e) => handleMaxMarksChange(e.target.value)}
                 className="w-20 bg-white text-slate-900 px-3 py-1.5 rounded-lg text-sm font-bold outline-none"
               />
-              <div className="flex space-x-1 ml-1">
-                {[20, 80, 100].map(v => (
-                  <button key={v} onClick={() => handleMaxMarksChange(v.toString())} className={`text-[10px] px-2 py-1 rounded font-black ${currentMax === v ? 'bg-indigo-400' : 'bg-white/20 hover:bg-white/30'}`}>
-                    {v}
-                  </button>
-                ))}
-              </div>
             </div>
           </div>
         </div>
@@ -127,7 +137,8 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({ classLevel, student
                       type="number"
                       value={localMarks[student.id] ?? ''}
                       onChange={(e) => handleMarkChange(student.id, e.target.value)}
-                      className="w-full p-2 text-center border-2 border-slate-200 rounded-xl focus:border-indigo-500 outline-none font-black text-indigo-700 shadow-sm"
+                      disabled={!canEditSubject(selectedSubject, classLevel)}
+                      className="w-full p-2 text-center border-2 border-slate-200 rounded-xl focus:border-indigo-500 outline-none font-black text-indigo-700 shadow-sm disabled:opacity-50 disabled:bg-slate-50"
                     />
                   </td>
                 </tr>
@@ -143,7 +154,11 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({ classLevel, student
         </button>
         <div className="flex space-x-3">
           <button onClick={onCancel} className="px-6 py-2.5 text-slate-500 font-bold hover:text-slate-700">Discard</button>
-          <button onClick={handleSave} disabled={students.length === 0} className="px-10 py-2.5 bg-indigo-600 text-white font-black rounded-xl shadow-xl hover:bg-indigo-700 transition-all">
+          <button 
+            onClick={handleSave} 
+            disabled={students.length === 0 || !canEditSubject(selectedSubject, classLevel)} 
+            className="px-10 py-2.5 bg-indigo-600 text-white font-black rounded-xl shadow-xl hover:bg-indigo-700 transition-all disabled:opacity-50"
+          >
             SAVE CHANGES
           </button>
         </div>

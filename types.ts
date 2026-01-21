@@ -1,6 +1,21 @@
 
 export type ClassLevel = '6' | '7' | '8' | '9' | '10';
 
+export enum Role {
+  ADMIN = 'ADMIN',
+  CLASS_INCHARGE = 'CLASS_INCHARGE',
+  SUBJECT_TEACHER = 'SUBJECT_TEACHER',
+  STUDENT = 'STUDENT'
+}
+
+export interface User {
+  username: string;
+  role: Role;
+  assignedClass?: ClassLevel;
+  assignedSubject?: keyof StudentMarks;
+  rollNo?: string; // For student view
+}
+
 export interface StudentMarks {
   pbi?: number;
   pbi_a?: number;
@@ -21,7 +36,7 @@ export interface Student {
   name: string;
   classLevel: ClassLevel;
   marks: StudentMarks;
-  manualTotal?: number; // Allows user to manually override the total
+  manualTotal?: number;
 }
 
 export interface CalculatedResult extends Student {
@@ -45,5 +60,5 @@ export interface SubjectConfig {
 export interface ColumnMapping {
   rollNo: string;
   name: string;
-  subjectMapping: Record<string, string>; // subjectKey -> csvHeader
+  subjectMapping: Record<string, string>;
 }
