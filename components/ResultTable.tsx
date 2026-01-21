@@ -2,6 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { CalculatedResult, ClassLevel, SubjectType, StudentMarks } from '../types';
 import { GET_SUBJECTS_FOR_CLASS } from '../constants';
+import { generateStudentRemarks } from '../utils/gemini';
 
 interface ResultTableProps {
   results: CalculatedResult[];
@@ -13,6 +14,8 @@ interface ResultTableProps {
 
 const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, onDelete, highlightSubject }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [remarks, setRemarks] = useState<Record<string, string>>({});
+  const [loadingRemarks, setLoadingRemarks] = useState<Record<string, boolean>>({});
   const subjects = GET_SUBJECTS_FOR_CLASS(classLevel);
 
   const filteredResults = useMemo(() => {
@@ -24,6 +27,13 @@ const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, 
         res.rollNo.toLowerCase().includes(lowerSearch)
     );
   }, [results, searchTerm]);
+
+  const handleGenerateRemark = async (student: CalculatedResult) => {
+    setLoadingRemarks(prev => ({ ...prev, [student.id]: true }));
+    const remark = await generateStudentRemarks(student);
+    setRemarks(prev => ({ ...prev, [student.id]: remark || "Excellent effort!" }));
+    setLoadingRemarks(prev => ({ ...prev, [student.id]: false }));
+  };
 
   return (
     <div className="space-y-4">
@@ -83,68 +93,95 @@ const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, 
                 </tr>
               ) : (
                 filteredResults.map((res) => (
-                  <tr key={res.id} className="hover:bg-slate-50/80 transition-colors group">
-                    <td className="px-4 py-4 font-semibold text-slate-700 sticky left-0 bg-white group-hover:bg-slate-50/80 z-10 border-r border-slate-100">
-                      {res.rollNo}
-                    </td>
-                    <td className="px-4 py-4 sticky left-[4.55rem] bg-white group-hover:bg-slate-50/80 z-10 border-r border-slate-200 min-w-[200px]">
-                      <div className="flex flex-col space-y-2">
-                        <span className="font-bold text-slate-800 truncate" title={res.name}>
-                          {res.name}
-                        </span>
-                        <div className="flex">
-                          <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider border shadow-sm ${
-                            res.status === 'Pass' 
-                            ? 'bg-emerald-500 text-white border-emerald-600' 
-                            : 'bg-red-500 text-white border-red-600'
-                          }`}>
-                            <i className={`fa-solid ${res.status === 'Pass' ? 'fa-circle-check' : 'fa-circle-xmark'} mr-1.5`}></i>
-                            {res.status}
+                  <React.Fragment key={res.id}>
+                    <tr className="hover:bg-slate-50/80 transition-colors group">
+                      <td className="px-4 py-4 font-semibold text-slate-700 sticky left-0 bg-white group-hover:bg-slate-50/80 z-10 border-r border-slate-100">
+                        {res.rollNo}
+                      </td>
+                      <td className="px-4 py-4 sticky left-[4.55rem] bg-white group-hover:bg-slate-50/80 z-10 border-r border-slate-200 min-w-[200px]">
+                        <div className="flex flex-col space-y-2">
+                          <span className="font-bold text-slate-800 truncate" title={res.name}>
+                            {res.name}
                           </span>
+                          <div className="flex items-center gap-2">
+                            <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider border shadow-sm ${
+                              res.status === 'Pass' 
+                              ? 'bg-emerald-500 text-white border-emerald-600' 
+                              : 'bg-red-500 text-white border-red-600'
+                            }`}>
+                              <i className={`fa-solid ${res.status === 'Pass' ? 'fa-circle-check' : 'fa-circle-xmark'} mr-1.5`}></i>
+                              {res.status}
+                            </span>
+                            <button 
+                              onClick={() => handleGenerateRemark(res)}
+                              disabled={loadingRemarks[res.id]}
+                              className="text-[10px] bg-indigo-50 text-indigo-600 border border-indigo-100 px-2 py-1 rounded font-black hover:bg-indigo-600 hover:text-white transition-all"
+                            >
+                              {loadingRemarks[res.id] ? <i className="fa-solid fa-spinner animate-spin"></i> : <i className="fa-solid fa-sparkles"></i>} AI REMARK
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    {subjects.map(sub => {
-                      const score = res.marks[sub.key] ?? 0;
-                      const isFail = sub.type === SubjectType.MAIN && score < 33;
-                      const isHighligted = sub.key === highlightSubject;
-                      return (
-                        <td 
-                          key={sub.key} 
-                          className={`px-4 py-4 text-center border-r border-slate-100 transition-colors ${
-                            isHighligted ? 'bg-indigo-50 font-black scale-105 shadow-inner' : 
-                            sub.type === SubjectType.GRADING ? 'bg-orange-50/20 italic' : ''
-                          }`}
-                        >
-                          <span className={`text-sm ${isFail ? 'text-red-600 font-extrabold underline decoration-red-200 underline-offset-4' : isHighligted ? 'text-indigo-800' : 'text-slate-600 font-medium'}`}>
-                            {res.marks[sub.key] ?? '-'}
-                          </span>
+                      </td>
+                      {subjects.map(sub => {
+                        const score = res.marks[sub.key] ?? 0;
+                        const isFail = sub.type === SubjectType.MAIN && score < 33;
+                        const isHighligted = sub.key === highlightSubject;
+                        return (
+                          <td 
+                            key={sub.key} 
+                            className={`px-4 py-4 text-center border-r border-slate-100 transition-colors ${
+                              isHighligted ? 'bg-indigo-50 font-black scale-105 shadow-inner' : 
+                              sub.type === SubjectType.GRADING ? 'bg-orange-50/20 italic' : ''
+                            }`}
+                          >
+                            <span className={`text-sm ${isFail ? 'text-red-600 font-extrabold underline decoration-red-200 underline-offset-4' : isHighligted ? 'text-indigo-800' : 'text-slate-600 font-medium'}`}>
+                              {res.marks[sub.key] ?? '-'}
+                            </span>
+                          </td>
+                        );
+                      })}
+                      <td className="px-4 py-4 text-center font-black text-blue-700 bg-blue-50/20 border-r border-slate-100">
+                        {res.total}
+                      </td>
+                      <td className="px-4 py-4 text-center font-bold text-blue-600 bg-blue-50/20 border-r border-slate-100">
+                        {res.percentage}%
+                      </td>
+                      <td className="px-4 py-4 text-center border-r border-slate-100">
+                        <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg font-black text-xs ${
+                          res.rank === 1 ? 'bg-yellow-400 text-yellow-900 shadow-md ring-2 ring-yellow-200' :
+                          res.rank === 2 ? 'bg-slate-200 text-slate-800' :
+                          res.rank === 3 ? 'bg-amber-100 text-amber-900' :
+                          'bg-slate-50 text-slate-400'
+                        }`}>
+                          {res.rank}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 text-center bg-white/50 group-hover:bg-transparent">
+                        <div className="flex items-center justify-center space-x-1">
+                          <button onClick={() => onEdit(res)} className="w-8 h-8 flex items-center justify-center text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-all"><i className="fa-solid fa-pen-to-square"></i></button>
+                          <button onClick={() => confirm(`Delete ${res.name}?`) && onDelete(res.id)} className="w-8 h-8 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition-all"><i className="fa-solid fa-trash-can"></i></button>
+                        </div>
+                      </td>
+                    </tr>
+                    {remarks[res.id] && (
+                      <tr className="bg-indigo-50/30">
+                        <td colSpan={subjects.length + 6} className="px-6 py-2 border-b border-indigo-100">
+                          <div className="flex items-center gap-3 text-indigo-700 italic">
+                            <i className="fa-solid fa-quote-left opacity-30 text-xs"></i>
+                            <span className="text-xs font-semibold">{remarks[res.id]}</span>
+                            <i className="fa-solid fa-quote-right opacity-30 text-xs"></i>
+                            <button onClick={() => setRemarks(prev => {
+                              const next = {...prev};
+                              delete next[res.id];
+                              return next;
+                            })} className="ml-auto text-indigo-300 hover:text-indigo-600">
+                              <i className="fa-solid fa-xmark text-[10px]"></i>
+                            </button>
+                          </div>
                         </td>
-                      );
-                    })}
-                    <td className="px-4 py-4 text-center font-black text-blue-700 bg-blue-50/20 border-r border-slate-100">
-                      {res.total}
-                    </td>
-                    <td className="px-4 py-4 text-center font-bold text-blue-600 bg-blue-50/20 border-r border-slate-100">
-                      {res.percentage}%
-                    </td>
-                    <td className="px-4 py-4 text-center border-r border-slate-100">
-                      <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg font-black text-xs ${
-                        res.rank === 1 ? 'bg-yellow-400 text-yellow-900 shadow-md ring-2 ring-yellow-200' :
-                        res.rank === 2 ? 'bg-slate-200 text-slate-800' :
-                        res.rank === 3 ? 'bg-amber-100 text-amber-900' :
-                        'bg-slate-50 text-slate-400'
-                      }`}>
-                        {res.rank}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 text-center bg-white/50 group-hover:bg-transparent">
-                      <div className="flex items-center justify-center space-x-1">
-                        <button onClick={() => onEdit(res)} className="w-8 h-8 flex items-center justify-center text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-all"><i className="fa-solid fa-pen-to-square"></i></button>
-                        <button onClick={() => confirm(`Delete ${res.name}?`) && onDelete(res.id)} className="w-8 h-8 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition-all"><i className="fa-solid fa-trash-can"></i></button>
-                      </div>
-                    </td>
-                  </tr>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 ))
               )}
             </tbody>

@@ -23,6 +23,7 @@ const App: React.FC = () => {
   // CSV Import States
   const [csvPreview, setCsvPreview] = useState<{ headers: string[], rows: string[][] } | null>(null);
   const [mapping, setMapping] = useState<ColumnMapping>({ rollNo: '', name: '', subjectMapping: {} });
+  const [importReport, setImportReport] = useState<{ success: number, errors: string[] } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -66,99 +67,210 @@ const App: React.FC = () => {
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target?.result as string;
+      // Split by lines and filter out empty ones
       const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
-      if (lines.length < 2) return alert('Invalid CSV');
+      if (lines.length < 2) return alert('Invalid CSV: The file must contain a header row and at least one data row.');
+      
       const headers = lines[0].split(',').map(h => h.trim());
       const rows = lines.slice(1).map(l => l.split(',').map(v => v.trim()));
-      setCsvPreview({ headers, rows });
       
-      // Auto-suggest mapping
+      setCsvPreview({ headers, rows });
+      setImportReport(null);
+      
+      // Auto-suggest mapping based on common names
       const subjects = GET_SUBJECTS_FOR_CLASS(activeClass);
       const initialMap: ColumnMapping = { rollNo: '', name: '', subjectMapping: {} };
+      
       headers.forEach(h => {
         const lh = h.toLowerCase();
-        if (lh === 'roll no' || lh === 'roll' || lh === 'id') initialMap.rollNo = h;
-        if (lh === 'name' || lh === 'student name' || lh === 'student') initialMap.name = h;
+        if (['roll no', 'roll', 'id', 'student id', 'sr no'].includes(lh)) initialMap.rollNo = h;
+        if (['name', 'student name', 'full name', 'student'].includes(lh)) initialMap.name = h;
+        
         subjects.forEach(s => {
-          if (s.label.toLowerCase() === lh) initialMap.subjectMapping[s.key] = h;
+          if (s.label.toLowerCase() === lh || s.key.toLowerCase() === lh) {
+            initialMap.subjectMapping[s.key] = h;
+          }
         });
       });
       setMapping(initialMap);
     };
     reader.readAsText(file);
+    // Reset file input so same file can be selected again
+    e.target.value = '';
   };
 
   const processImport = () => {
-    if (!csvPreview || !mapping.name || !mapping.rollNo) return alert('Please map Roll No and Name columns');
+    if (!csvPreview || !mapping.name || !mapping.rollNo) {
+      return alert('Mapping Error: You must select which columns contain the "Roll No" and "Name".');
+    }
     
-    const imported: Student[] = csvPreview.rows.map((row, idx) => {
-      const rollNo = row[csvPreview.headers.indexOf(mapping.rollNo)] || `R-${idx}`;
-      const name = row[csvPreview.headers.indexOf(mapping.name)] || 'Unknown';
+    const nameIdx = csvPreview.headers.indexOf(mapping.name);
+    const rollIdx = csvPreview.headers.indexOf(mapping.rollNo);
+    
+    const imported: Student[] = [];
+    const errors: string[] = [];
+    let successCount = 0;
+
+    csvPreview.rows.forEach((row, idx) => {
+      // Row validation: Skip completely empty rows
+      if (row.length <= 1 && !row[0]) return;
+
+      const rollNo = row[rollIdx];
+      const name = row[nameIdx];
+
+      if (!rollNo || !name) {
+        errors.push(`Row ${idx + 2}: Missing Roll No or Name.`);
+        return;
+      }
+
+      // Check for duplicate Roll No in the same class (optional but safer)
+      // For now, we allow it but validate markers
       const studentMarks: any = {};
+      let hasInvalidMark = false;
+
       Object.entries(mapping.subjectMapping).forEach(([key, header]) => {
-        const val = parseInt(row[csvPreview.headers.indexOf(header)]);
-        studentMarks[key] = isNaN(val) ? 0 : val;
+        const headerIdx = csvPreview.headers.indexOf(header);
+        const valStr = row[headerIdx];
+        if (valStr === undefined || valStr === '') {
+          studentMarks[key] = 0;
+        } else {
+          const val = parseInt(valStr);
+          if (isNaN(val)) {
+            hasInvalidMark = true;
+            studentMarks[key] = 0; // Default to 0 but mark as error
+          } else {
+            studentMarks[key] = val;
+          }
+        }
       });
-      return {
+
+      if (hasInvalidMark) {
+        errors.push(`Row ${idx + 2} (${name}): Some marks were invalid (non-numeric) and were defaulted to 0.`);
+      }
+
+      imported.push({
         id: `imp-${Date.now()}-${idx}`,
-        rollNo, name, classLevel: activeClass, marks: studentMarks as StudentMarks
-      };
+        rollNo,
+        name,
+        classLevel: activeClass,
+        marks: studentMarks as StudentMarks
+      });
+      successCount++;
     });
 
     setStudents(prev => [...prev, ...imported]);
-    setCsvPreview(null);
-    alert(`Imported ${imported.length} students`);
+    setImportReport({ success: successCount, errors });
+    
+    if (errors.length === 0) {
+      setCsvPreview(null);
+      alert(`Import Successful! Added ${successCount} students.`);
+    }
+    // If there are errors, we keep the modal open to let the user see the report
   };
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-900 pb-24 font-sans">
       <input type="file" ref={fileInputRef} onChange={handleFileSelect} accept=".csv" className="hidden" />
 
-      {/* Import Modal */}
+      {/* Enhanced Import Modal */}
       {csvPreview && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-300">
-            <div className="p-6 bg-indigo-600 text-white flex justify-between items-center">
-              <h3 className="text-xl font-black">Map CSV Columns (Class {activeClass})</h3>
-              <button onClick={() => setCsvPreview(null)}><i className="fa-solid fa-xmark"></i></button>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[32px] w-full max-w-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-300">
+            <div className="p-8 bg-indigo-600 text-white flex justify-between items-center">
+              <div>
+                <h3 className="text-2xl font-black">Configure Import Mapping</h3>
+                <p className="text-indigo-100 text-xs font-bold uppercase tracking-widest mt-1">Class Level: {activeClass}</p>
+              </div>
+              <button 
+                onClick={() => setCsvPreview(null)}
+                className="w-10 h-10 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center transition-colors"
+              >
+                <i className="fa-solid fa-xmark"></i>
+              </button>
             </div>
-            <div className="p-6 overflow-y-auto space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] font-black uppercase text-slate-400">Roll No Header</label>
-                  <select value={mapping.rollNo} onChange={e => setMapping({...mapping, rollNo: e.target.value})} className="w-full p-2 bg-slate-50 rounded-lg border font-bold">
-                    <option value="">Select Column</option>
+
+            <div className="p-8 overflow-y-auto space-y-8 custom-scrollbar">
+              {importReport && importReport.errors.length > 0 && (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                  <h4 className="text-amber-800 font-black text-sm mb-2 flex items-center gap-2">
+                    <i className="fa-solid fa-circle-exclamation"></i> Import Warnings ({importReport.errors.length})
+                  </h4>
+                  <ul className="text-[11px] text-amber-700 font-medium list-disc list-inside space-y-1 max-h-32 overflow-y-auto">
+                    {importReport.errors.map((err, i) => <li key={i}>{err}</li>)}
+                  </ul>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-black uppercase text-slate-400 tracking-wider">Map Roll No Column</label>
+                  <select 
+                    value={mapping.rollNo} 
+                    onChange={e => setMapping({...mapping, rollNo: e.target.value})} 
+                    className="w-full p-3 bg-slate-50 rounded-xl border-2 border-slate-100 font-black text-slate-700 outline-none focus:border-indigo-500 transition-all"
+                  >
+                    <option value="">-- Select Column --</option>
                     {csvPreview.headers.map(h => <option key={h} value={h}>{h}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label className="text-[10px] font-black uppercase text-slate-400">Name Header</label>
-                  <select value={mapping.name} onChange={e => setMapping({...mapping, name: e.target.value})} className="w-full p-2 bg-slate-50 rounded-lg border font-bold">
-                    <option value="">Select Column</option>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-black uppercase text-slate-400 tracking-wider">Map Name Column</label>
+                  <select 
+                    value={mapping.name} 
+                    onChange={e => setMapping({...mapping, name: e.target.value})} 
+                    className="w-full p-3 bg-slate-50 rounded-xl border-2 border-slate-100 font-black text-slate-700 outline-none focus:border-indigo-500 transition-all"
+                  >
+                    <option value="">-- Select Column --</option>
                     {csvPreview.headers.map(h => <option key={h} value={h}>{h}</option>)}
                   </select>
                 </div>
               </div>
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase text-slate-400">Subject Mapping</label>
-                {GET_SUBJECTS_FOR_CLASS(activeClass).map(sub => (
-                  <div key={sub.key} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                    <span className="font-black text-xs text-slate-600 uppercase">{sub.label}</span>
-                    <select 
-                      value={mapping.subjectMapping[sub.key] || ''} 
-                      onChange={e => setMapping({...mapping, subjectMapping: {...mapping.subjectMapping, [sub.key]: e.target.value}})}
-                      className="p-1.5 bg-white rounded-lg border font-bold text-xs min-w-[150px]"
-                    >
-                      <option value="">Skip Subject</option>
-                      {csvPreview.headers.map(h => <option key={h} value={h}>{h}</option>)}
-                    </select>
-                  </div>
-                ))}
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-black uppercase text-slate-400 tracking-wider">Subject Columns Mapping</label>
+                  <span className="text-[10px] font-bold text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded">Optional</span>
+                </div>
+                <div className="grid grid-cols-1 gap-3">
+                  {GET_SUBJECTS_FOR_CLASS(activeClass).map(sub => (
+                    <div key={sub.key} className="flex items-center justify-between p-4 bg-slate-50/50 rounded-2xl border border-slate-100 hover:border-indigo-100 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-2 h-2 rounded-full ${sub.type === 'MAIN' ? 'bg-indigo-500' : 'bg-orange-500'}`}></div>
+                        <span className="font-black text-xs text-slate-700 uppercase">{sub.label}</span>
+                      </div>
+                      <select 
+                        value={mapping.subjectMapping[sub.key] || ''} 
+                        onChange={e => setMapping({...mapping, subjectMapping: {...mapping.subjectMapping, [sub.key]: e.target.value}})}
+                        className="p-2 bg-white rounded-lg border-2 border-slate-100 font-black text-[11px] min-w-[180px] outline-none focus:border-indigo-500"
+                      >
+                        <option value="">-- Skip Column --</option>
+                        {csvPreview.headers.map(h => <option key={h} value={h}>{h}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
-            <div className="p-6 border-t bg-slate-50 flex justify-end gap-3">
-              <button onClick={() => setCsvPreview(null)} className="px-6 py-2 font-bold text-slate-400">Cancel</button>
-              <button onClick={processImport} className="px-8 py-2 bg-indigo-600 text-white font-black rounded-xl">FINISH IMPORT</button>
+
+            <div className="p-8 border-t bg-slate-50 flex items-center justify-between">
+              <div className="text-xs font-bold text-slate-400 uppercase">
+                Ready to import {csvPreview.rows.length} rows
+              </div>
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setCsvPreview(null)} 
+                  className="px-6 py-3 font-black text-slate-500 hover:text-slate-700 uppercase tracking-widest text-xs"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={processImport} 
+                  className="px-10 py-3 bg-indigo-600 text-white font-black rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center gap-2"
+                >
+                  <i className="fa-solid fa-file-import"></i>
+                  {importReport ? 'RE-IMPORT WITH CHANGES' : 'PROCESS IMPORT'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
