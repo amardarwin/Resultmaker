@@ -15,22 +15,19 @@ interface SubjectEntryFormProps {
 
 const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({ classLevel, students, onSave, onCancel, initialMaxMarks }) => {
   const { user, canEditSubject } = useAuth();
-  const subjects = GET_SUBJECTS_FOR_CLASS(classLevel);
+  const allClassSubjects = GET_SUBJECTS_FOR_CLASS(classLevel);
   
-  // Logic: If user is SUBJECT_TEACHER, default to their subject and restrict changes.
+  // Logic: Only show subjects the user has permission to edit
+  const editableSubjects = allClassSubjects.filter(s => canEditSubject(s.key, classLevel));
+
   const [selectedSubject, setSelectedSubject] = useState<keyof StudentMarks>(() => {
-    if (user?.role === Role.SUBJECT_TEACHER && user.assignedSubject) {
-      // Check if the assigned subject exists in the current class config
-      const exists = subjects.some(s => s.key === user.assignedSubject);
-      return exists ? user.assignedSubject : subjects[0].key;
-    }
-    return subjects[0].key;
+    return editableSubjects.length > 0 ? editableSubjects[0].key : allClassSubjects[0].key;
   });
 
   const [localMarks, setLocalMarks] = useState<{ [studentId: string]: number }>({});
   const [subjectMaxMarks, setSubjectMaxMarks] = useState<Record<string, number>>(() => {
     const map: Record<string, number> = {};
-    subjects.forEach(s => map[s.key] = initialMaxMarks);
+    allClassSubjects.forEach(s => map[s.key] = initialMaxMarks);
     return map;
   });
 
@@ -66,12 +63,11 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({ classLevel, student
   };
 
   const handleDownloadAwardList = () => {
-    const currentLabel = subjects.find(s => s.key === selectedSubject)?.label || 'Subject';
+    const currentLabel = allClassSubjects.find(s => s.key === selectedSubject)?.label || 'Subject';
     exportAwardList(students, classLevel, selectedSubject, currentLabel, currentMax);
   };
 
-  const subjectLabel = subjects.find(s => s.key === selectedSubject)?.label || '';
-  const isSubjectLocked = user?.role === Role.SUBJECT_TEACHER;
+  const subjectLabel = allClassSubjects.find(s => s.key === selectedSubject)?.label || '';
 
   return (
     <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-300">
@@ -82,22 +78,22 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({ classLevel, student
             Award List Entry
           </h2>
           <p className="text-indigo-100 text-xs font-bold uppercase tracking-wider mt-1 opacity-80">
-            Updating {subjectLabel} for Class {classLevel}
+            Class {classLevel} • {editableSubjects.length} Subject(s) Editable
           </p>
         </div>
         
         <div className="flex flex-wrap items-center gap-4 bg-white/10 p-3 rounded-xl backdrop-blur-sm">
           <div className="flex flex-col">
-            <label className="text-[10px] font-black uppercase mb-1 text-indigo-200">Subject</label>
+            <label className="text-[10px] font-black uppercase mb-1 text-indigo-200">Select Subject</label>
             <select 
               value={selectedSubject} 
-              disabled={isSubjectLocked}
               onChange={(e) => setSelectedSubject(e.target.value as keyof StudentMarks)}
-              className="bg-white text-slate-900 px-3 py-1.5 rounded-lg text-sm font-bold outline-none ring-2 ring-transparent focus:ring-indigo-300 disabled:bg-slate-100 disabled:opacity-50"
+              className="bg-white text-slate-900 px-3 py-1.5 rounded-lg text-sm font-bold outline-none ring-2 ring-transparent focus:ring-indigo-300"
             >
-              {subjects.map(sub => (
+              {editableSubjects.map(sub => (
                 <option key={sub.key} value={sub.key}>{sub.label} {sub.type === 'GRADING' ? '(G)' : ''}</option>
               ))}
+              {editableSubjects.length === 0 && <option disabled>No subjects assigned</option>}
             </select>
           </div>
 
@@ -116,36 +112,43 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({ classLevel, student
       </div>
 
       <div className="max-h-[60vh] overflow-y-auto custom-scrollbar">
-        <table className="w-full text-sm text-left border-collapse">
-          <thead className="text-[10px] text-slate-400 font-black uppercase bg-slate-50 sticky top-0 border-b border-slate-100 z-10">
-            <tr>
-              <th className="px-8 py-4">Roll No</th>
-              <th className="px-8 py-4">Student Name</th>
-              <th className="px-8 py-4 text-center w-40">Entry (/{currentMax})</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50">
-            {students.length === 0 ? (
-              <tr><td colSpan={3} className="px-8 py-20 text-center text-slate-400 font-bold italic">No students in this class.</td></tr>
-            ) : (
-              students.map((student, idx) => (
-                <tr key={student.id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'} hover:bg-indigo-50/50 transition-colors`}>
-                  <td className="px-8 py-4 font-black text-slate-500">{student.rollNo}</td>
-                  <td className="px-8 py-4 font-bold text-slate-800">{student.name}</td>
-                  <td className="px-8 py-4 flex justify-center">
-                    <input 
-                      type="number"
-                      value={localMarks[student.id] ?? ''}
-                      onChange={(e) => handleMarkChange(student.id, e.target.value)}
-                      disabled={!canEditSubject(selectedSubject, classLevel)}
-                      className="w-full p-2 text-center border-2 border-slate-200 rounded-xl focus:border-indigo-500 outline-none font-black text-indigo-700 shadow-sm disabled:opacity-50 disabled:bg-slate-50"
-                    />
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+        {editableSubjects.length === 0 ? (
+          <div className="p-20 text-center flex flex-col items-center">
+            <i className="fa-solid fa-lock text-6xl text-slate-200 mb-4"></i>
+            <h3 className="text-xl font-black text-slate-400 uppercase tracking-widest">Entry Locked</h3>
+            <p className="text-sm text-slate-400 mt-2">You are not assigned to enter marks for any subjects in Class {classLevel}.</p>
+          </div>
+        ) : (
+          <table className="w-full text-sm text-left border-collapse">
+            <thead className="text-[10px] text-slate-400 font-black uppercase bg-slate-50 sticky top-0 border-b border-slate-100 z-10">
+              <tr>
+                <th className="px-8 py-4">Roll No</th>
+                <th className="px-8 py-4">Student Name</th>
+                <th className="px-8 py-4 text-center w-40">Entry (/{currentMax})</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {students.length === 0 ? (
+                <tr><td colSpan={3} className="px-8 py-20 text-center text-slate-400 font-bold italic">No students in this class.</td></tr>
+              ) : (
+                students.map((student, idx) => (
+                  <tr key={student.id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'} hover:bg-indigo-50/50 transition-colors`}>
+                    <td className="px-8 py-4 font-black text-slate-500">{student.rollNo}</td>
+                    <td className="px-8 py-4 font-bold text-slate-800">{student.name}</td>
+                    <td className="px-8 py-4 flex justify-center">
+                      <input 
+                        type="number"
+                        value={localMarks[student.id] ?? ''}
+                        onChange={(e) => handleMarkChange(student.id, e.target.value)}
+                        className="w-full p-2 text-center border-2 border-slate-200 rounded-xl focus:border-indigo-500 outline-none font-black text-indigo-700 shadow-sm"
+                      />
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        )}
       </div>
 
       <div className="p-6 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
@@ -156,7 +159,7 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({ classLevel, student
           <button onClick={onCancel} className="px-6 py-2.5 text-slate-500 font-bold hover:text-slate-700">Discard</button>
           <button 
             onClick={handleSave} 
-            disabled={students.length === 0 || !canEditSubject(selectedSubject, classLevel)} 
+            disabled={students.length === 0 || editableSubjects.length === 0} 
             className="px-10 py-2.5 bg-indigo-600 text-white font-black rounded-xl shadow-xl hover:bg-indigo-700 transition-all disabled:opacity-50"
           >
             SAVE CHANGES

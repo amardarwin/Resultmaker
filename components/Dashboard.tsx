@@ -19,9 +19,12 @@ const Dashboard: React.FC<DashboardProps> = ({ results, allStudents, className, 
   const { user } = useAuth();
   const [selectedBand, setSelectedBand] = useState<string | null>(null);
   
-  // Logic: Subject Teachers default to their subject comparison
+  // Fix: Property 'assignedSubject' does not exist on type 'User'. Using 'assignedSubjects' array instead.
+  // Logic: Subject Teachers default to their first assigned subject comparison
   const [compSubject, setCompSubject] = useState<keyof StudentMarks>(() => {
-    if (user?.role === Role.SUBJECT_TEACHER && user.assignedSubject) return user.assignedSubject;
+    if (user?.role === Role.SUBJECT_TEACHER && user.assignedSubjects && user.assignedSubjects.length > 0) {
+      return user.assignedSubjects[0];
+    }
     return 'hindi';
   });
 
@@ -198,7 +201,8 @@ const Dashboard: React.FC<DashboardProps> = ({ results, allStudents, className, 
         <h3 className="text-2xl font-black text-slate-800 px-2">Subject Performance Analysis</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {subjectStats.map((stat) => {
-            const isAssignedSubject = user?.role === Role.SUBJECT_TEACHER && user.assignedSubject === stat.key;
+            // Fix: Property 'assignedSubject' does not exist on type 'User'. Using 'assignedSubjects' array instead.
+            const isAssignedSubject = user?.role === Role.SUBJECT_TEACHER && user.assignedSubjects?.includes(stat.key);
             return (
               <button 
                 key={stat.key}

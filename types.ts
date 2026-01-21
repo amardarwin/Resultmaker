@@ -14,7 +14,7 @@ export interface User {
   name: string;
   role: Role;
   assignedClass?: ClassLevel;
-  assignedSubject?: keyof StudentMarks;
+  assignedSubjects?: (keyof StudentMarks)[]; // Now supports multiple subjects
   rollNo?: string;
 }
 
@@ -50,7 +50,7 @@ export interface Student {
   classLevel: ClassLevel;
   marks: StudentMarks;
   manualTotal?: number;
-  password?: string; // Custom portal password
+  password?: string;
 }
 
 export interface CalculatedResult extends Student {

@@ -50,7 +50,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const updateStaff = (updatedStaff: StaffUser) => {
     setStaffUsers(prev => prev.map(s => s.id === updatedStaff.id ? updatedStaff : s));
-    // If the logged-in user is the one being updated, refresh the session
     if (user?.id === updatedStaff.id) {
       const { password, ...safeUser } = updatedStaff;
       setUser(safeUser);
@@ -78,19 +77,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } else if (creds.role === Role.STUDENT) {
       const students: Student[] = JSON.parse(localStorage.getItem('school_results_students') || '[]');
       const student = students.find(s => s.classLevel === creds.classLevel && s.rollNo === creds.rollNo);
-      
-      // Use custom password if set, otherwise default to '1234'
       const correctPassword = student?.password || '1234';
-      
       if (student && creds.pass === correctPassword) {
-        authUser = { 
-          id: student.id, 
-          username: student.rollNo, 
-          name: student.name, 
-          role: Role.STUDENT, 
-          assignedClass: student.classLevel, 
-          rollNo: student.rollNo 
-        };
+        authUser = { id: student.id, username: student.rollNo, name: student.name, role: Role.STUDENT, assignedClass: student.classLevel, rollNo: student.rollNo };
       }
     }
 
@@ -117,8 +106,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const canEditSubject = (subjectKey: keyof StudentMarks, classLevel: ClassLevel): boolean => {
     if (!user) return false;
     if (user.role === Role.ADMIN) return true;
+    // Incharges can edit ALL subjects for their own class
     if (user.role === Role.CLASS_INCHARGE && user.assignedClass === classLevel) return true;
-    if (user.role === Role.SUBJECT_TEACHER && user.assignedSubject === subjectKey) return true;
+    // Subject teachers (or Hybrid Incharges) can edit columns that are in their assigned list
+    if (user.assignedSubjects?.includes(subjectKey)) return true;
     return false;
   };
 
