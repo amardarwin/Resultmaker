@@ -9,11 +9,18 @@ interface AuthContextType {
   addStaff: (staff: StaffUser) => void;
   updateStaff: (staff: StaffUser) => void;
   removeStaff: (id: string) => void;
-  login: (credentials: { username: string; pass: string; role: Role; classLevel?: ClassLevel; rollNo?: string }) => boolean;
+  login: (credentials: { 
+    category: 'STAFF' | 'STUDENT';
+    username?: string; 
+    pass: string; 
+    classLevel?: ClassLevel; 
+    rollNo?: string 
+  }) => boolean;
   logout: () => void;
   canEditStudent: (classLevel: ClassLevel) => boolean;
   canEditSubject: (subjectKey: keyof StudentMarks, classLevel: ClassLevel) => boolean;
   isViewRestricted: boolean;
+  accessibleClasses: ClassLevel[];
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -60,25 +67,42 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setStaffUsers(prev => prev.filter(s => s.id !== id));
   };
 
-  const login = (creds: { username: string; pass: string; role: Role; classLevel?: ClassLevel; rollNo?: string }): boolean => {
+  const login = (creds: { 
+    category: 'STAFF' | 'STUDENT';
+    username?: string; 
+    pass: string; 
+    classLevel?: ClassLevel; 
+    rollNo?: string 
+  }): boolean => {
     let authUser: User | null = null;
 
-    if (creds.role === Role.ADMIN) {
+    if (creds.category === 'STAFF') {
+      // 1. Check Admin
       if (creds.username === 'admin' && creds.pass === schoolConfig?.adminPassword) {
         authUser = { id: 'admin', username: 'admin', name: schoolConfig.adminName, role: Role.ADMIN };
+      } 
+      // 2. Check Staff Directory (Incharges and Teachers)
+      else {
+        const staff = staffUsers.find(s => s.username === creds.username && s.password === creds.pass);
+        if (staff) {
+          const { password, ...safeUser } = staff;
+          authUser = safeUser;
+        }
       }
-    } else if (creds.role === Role.CLASS_INCHARGE || creds.role === Role.SUBJECT_TEACHER) {
-      const staff = staffUsers.find(s => s.username === creds.username && s.password === creds.pass && s.role === creds.role);
-      if (staff) {
-        const { password, ...safeUser } = staff;
-        authUser = safeUser;
-      }
-    } else if (creds.role === Role.STUDENT) {
+    } else {
+      // Student Login
       const students: Student[] = JSON.parse(localStorage.getItem('school_results_students') || '[]');
       const student = students.find(s => s.classLevel === creds.classLevel && s.rollNo === creds.rollNo);
       const correctPassword = student?.password || '1234';
       if (student && creds.pass === correctPassword) {
-        authUser = { id: student.id, username: student.rollNo, name: student.name, role: Role.STUDENT, assignedClass: student.classLevel, rollNo: student.rollNo };
+        authUser = { 
+          id: student.id, 
+          username: student.rollNo, 
+          name: student.name, 
+          role: Role.STUDENT, 
+          assignedClass: student.classLevel, 
+          rollNo: student.rollNo 
+        };
       }
     }
 
@@ -105,22 +129,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const canEditSubject = (subjectKey: keyof StudentMarks, classLevel: ClassLevel): boolean => {
     if (!user) return false;
     if (user.role === Role.ADMIN) return true;
-    
-    // Incharges can edit ALL subjects for their own class
     if (user.role === Role.CLASS_INCHARGE && user.assignedClass === classLevel) return true;
-    
-    // Check granular teaching assignments
     const assignment = user.teachingAssignments?.find(a => a.classLevel === classLevel);
     if (assignment?.subjects.includes(subjectKey)) return true;
-    
     return false;
   };
 
-  const isViewRestricted = user?.role === Role.CLASS_INCHARGE || user?.role === Role.STUDENT;
+  // View is restricted only for Students or Staff who don't have multi-class assignments
+  const isViewRestricted = user?.role === Role.STUDENT;
+
+  const accessibleClasses = React.useMemo(() => {
+    if (!user) return [];
+    if (user.role === Role.ADMIN) return ['6', '7', '8', '9', '10'] as ClassLevel[];
+    const classes = new Set<ClassLevel>();
+    if (user.assignedClass) classes.add(user.assignedClass);
+    user.teachingAssignments?.forEach(a => classes.add(a.classLevel));
+    return Array.from(classes);
+  }, [user]);
 
   return (
     <AuthContext.Provider value={{ 
-      user, schoolConfig, staffUsers, setupSchool, addStaff, updateStaff, removeStaff, login, logout, canEditStudent, canEditSubject, isViewRestricted 
+      user, schoolConfig, staffUsers, setupSchool, addStaff, updateStaff, removeStaff, login, logout, canEditStudent, canEditSubject, isViewRestricted, accessibleClasses 
     }}>
       {children}
     </AuthContext.Provider>

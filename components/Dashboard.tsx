@@ -12,9 +12,10 @@ interface DashboardProps {
   className: string;
   onSubjectHighlight: (subject: keyof StudentMarks | null) => void;
   activeSubjectFilter: keyof StudentMarks | null;
+  onClassChange?: (cls: ClassLevel) => void; // Prop to support switching context
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ results, allStudents, className, onSubjectHighlight, activeSubjectFilter }) => {
+const Dashboard: React.FC<DashboardProps> = ({ results, allStudents, className, onSubjectHighlight, activeSubjectFilter, onClassChange }) => {
   const { user } = useAuth();
   const [selectedBand, setSelectedBand] = useState<string | null>(null);
   
@@ -52,15 +53,6 @@ const Dashboard: React.FC<DashboardProps> = ({ results, allStudents, className, 
     setLoadingAi(false);
   };
 
-  const activeSubjectStats = activeSubjectFilter 
-    ? subjectStats.find(s => s.key === activeSubjectFilter) 
-    : null;
-
-  const poorPerformers = useMemo(() => {
-    if (!activeSubjectFilter) return [];
-    return results.filter(res => (res.marks[activeSubjectFilter] || 0) < 33);
-  }, [activeSubjectFilter, results]);
-
   const filteredByBand = useMemo(() => {
     if (!selectedBand) return [];
     const band = bands.find(b => b.range === selectedBand);
@@ -71,8 +63,43 @@ const Dashboard: React.FC<DashboardProps> = ({ results, allStudents, className, 
   const allPossibleSubjects = GET_SUBJECTS_FOR_CLASS(className as ClassLevel);
   const isSubjectLocked = user?.role === Role.SUBJECT_TEACHER;
 
+  // Hybrid Role Logic: Check if current user is an incharge with teaching assignments
+  const isHybridIncharge = user?.role === Role.CLASS_INCHARGE && (user.teachingAssignments?.length || 0) > 0;
+
   return (
     <div className="space-y-8 pb-10">
+      {/* Unified Header with Switch View for Hybrid Roles */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm">
+        <div>
+          <h2 className="text-3xl font-black text-slate-800 tracking-tight">Analytics Overview</h2>
+          <p className="text-slate-400 text-xs font-bold uppercase mt-1">Class {className} Performance Dashboard</p>
+        </div>
+
+        {isHybridIncharge && (
+          <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-100">
+            <span className="text-[10px] font-black text-slate-400 uppercase ml-2">Switch View:</span>
+            <div className="flex gap-1">
+              <button 
+                onClick={() => onClassChange?.(user.assignedClass!)}
+                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${className === user.assignedClass ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-600 hover:bg-slate-100'}`}
+              >
+                My Class (Incharge)
+              </button>
+              <div className="h-8 w-px bg-slate-200 mx-1"></div>
+              {user.teachingAssignments?.map(a => (
+                <button 
+                  key={a.classLevel}
+                  onClick={() => onClassChange?.(a.classLevel)}
+                  className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${className === a.classLevel ? 'bg-emerald-600 text-white shadow-lg' : 'bg-white text-slate-600 hover:bg-slate-100'}`}
+                >
+                  C-{a.classLevel} (Teacher)
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
           <div className="flex items-center justify-between mb-2">
@@ -232,40 +259,6 @@ const Dashboard: React.FC<DashboardProps> = ({ results, allStudents, className, 
               </button>
             );
           })}
-        </div>
-      </div>
-
-      <div className="bg-white p-8 rounded-[32px] shadow-sm border border-slate-100 space-y-8">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h3 className="text-2xl font-black text-slate-800">Cross-Class Subject Comparison</h3>
-          </div>
-          <div className="flex flex-col">
-            <label className="text-[10px] font-black text-slate-400 uppercase mb-2">Select Subject</label>
-            <select 
-              value={compSubject} 
-              disabled={isSubjectLocked}
-              onChange={(e) => setCompSubject(e.target.value as keyof StudentMarks)}
-              className="bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl text-sm font-black disabled:opacity-50"
-            >
-              {allPossibleSubjects.map(sub => (
-                <option key={sub.key} value={sub.key}>{sub.label}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="h-72 bg-slate-50 rounded-3xl p-6">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={comparativeStats}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-              <XAxis dataKey="classLevel" tickFormatter={(v) => `Class ${v}`} fontSize={11} fontWeight={800} />
-              <YAxis fontSize={11} fontWeight={800} />
-              <Tooltip cursor={{fill: '#f1f5f9'}} />
-              <Bar dataKey="avg" name="Avg Score" fill="#6366f1" radius={[6, 6, 0, 0]} barSize={40} />
-              <Bar dataKey="passPerc" name="Pass Rate %" fill="#10b981" radius={[6, 6, 0, 0]} barSize={40} />
-            </BarChart>
-          </ResponsiveContainer>
         </div>
       </div>
     </div>

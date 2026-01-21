@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { Student, ClassLevel, CalculatedResult, StudentMarks, ColumnMapping, Role } from './types';
@@ -15,7 +14,7 @@ import LoginScreen from './components/LoginScreen';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
 const AppContent: React.FC = () => {
-  const { user, schoolConfig, logout, isViewRestricted, canEditStudent } = useAuth();
+  const { user, schoolConfig, logout, isViewRestricted, canEditStudent, accessibleClasses } = useAuth();
   const [activeClass, setActiveClass] = useState<ClassLevel>('6');
   const [maxMarks, setMaxMarks] = useState(100);
   const [sortBySubject, setSortBySubject] = useState<keyof StudentMarks | null>(null);
@@ -205,7 +204,7 @@ const AppContent: React.FC = () => {
           {isViewRestricted ? (
             <span className="px-5 py-2 rounded-lg text-xs font-black bg-indigo-600 text-white shadow-sm">Class {activeClass}</span>
           ) : (
-            ALL_CLASSES.map(cls => (
+            ALL_CLASSES.filter(c => accessibleClasses.includes(c)).map(cls => (
               <button key={cls} onClick={() => setActiveClass(cls)} className={`px-4 py-2 rounded-lg text-xs font-black transition-all ${activeClass === cls ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>C-{cls}</button>
             ))
           )}
@@ -237,7 +236,7 @@ const AppContent: React.FC = () => {
         ) : view === 'subject-entry' ? (
           <SubjectEntryForm classLevel={activeClass} students={students.filter(s => s.classLevel === activeClass)} onSave={handleBulkUpdate} onCancel={() => setView('sheet')} initialMaxMarks={maxMarks} />
         ) : view === 'dashboard' ? (
-          <Dashboard results={classResults} allStudents={students} className={activeClass} onSubjectHighlight={(s) => setSortBySubject(s)} activeSubjectFilter={sortBySubject} />
+          <Dashboard results={classResults} allStudents={students} className={activeClass} onSubjectHighlight={(s) => setSortBySubject(s)} activeSubjectFilter={sortBySubject} onClassChange={(cls) => setActiveClass(cls)} />
         ) : (
           <ResultTable results={classResults} classLevel={activeClass} onEdit={handleEdit} onDelete={handleDelete} highlightSubject={sortBySubject} />
         )}
