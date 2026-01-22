@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { ClassLevel, Student, StudentMarks } from '../types';
+import { ClassLevel, Student, StudentMarks, Role } from '../types';
 import { ALL_CLASSES, GET_SUBJECTS_FOR_CLASS } from '../constants';
+import { useAuth } from '../contexts/AuthContext';
 
 interface StudentFormProps {
   onAdd: (student: Student) => void;
@@ -10,12 +11,24 @@ interface StudentFormProps {
 }
 
 const StudentForm: React.FC<StudentFormProps> = ({ onAdd, onCancel, editStudent }) => {
-  const [classLevel, setClassLevel] = useState<ClassLevel>(editStudent?.classLevel || '6');
+  const { user } = useAuth();
+  
+  // Requirement 1: Force ClassLevel for Incharges
+  const initialClass = editStudent?.classLevel || 
+    (user?.role === Role.CLASS_INCHARGE ? user.assignedClass : '6') || '6';
+
+  const [classLevel, setClassLevel] = useState<ClassLevel>(initialClass as ClassLevel);
   const [rollNo, setRollNo] = useState(editStudent?.rollNo || '');
   const [name, setName] = useState(editStudent?.name || '');
   const [password, setPassword] = useState(editStudent?.password || '1234');
   const [marks, setMarks] = useState<Partial<StudentMarks>>(editStudent?.marks || {});
   const [manualTotal, setManualTotal] = useState<string>(editStudent?.manualTotal?.toString() || '');
+
+  // Safety Redirect: Subject Teachers should not access this
+  if (user?.role === Role.SUBJECT_TEACHER) {
+    onCancel();
+    return null;
+  }
 
   const subjects = GET_SUBJECTS_FOR_CLASS(classLevel);
 
@@ -37,7 +50,7 @@ const StudentForm: React.FC<StudentFormProps> = ({ onAdd, onCancel, editStudent 
       id: editStudent?.id || Date.now().toString(),
       rollNo,
       name,
-      password, // Save custom password
+      password,
       classLevel,
       marks: finalMarks as StudentMarks,
       manualTotal: manualTotal !== '' ? parseInt(manualTotal) : undefined
@@ -46,23 +59,32 @@ const StudentForm: React.FC<StudentFormProps> = ({ onAdd, onCancel, editStudent 
     onAdd(student);
   };
 
+  const isClassLocked = user?.role === Role.CLASS_INCHARGE;
+
   return (
     <div className="bg-white p-8 rounded-2xl shadow-xl border border-slate-200 animate-in fade-in zoom-in-95 duration-300">
       <div className="flex items-center justify-between mb-8 border-b border-slate-100 pb-4">
         <h2 className="text-2xl font-black text-slate-800">
           {editStudent ? 'Update Student Profile' : 'New Enrollment'}
         </h2>
-        <div className="flex items-center gap-2 bg-indigo-50 px-4 py-2 rounded-xl">
-           <i className="fa-solid fa-key text-indigo-400 text-xs"></i>
-           <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Auth Active</span>
-        </div>
+        {isClassLocked && (
+          <div className="flex items-center gap-2 bg-amber-50 px-4 py-2 rounded-xl border border-amber-100">
+             <i className="fa-solid fa-lock text-amber-500 text-xs"></i>
+             <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Enforcing Class {user.assignedClass}</span>
+          </div>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-8">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div>
             <label className="block text-xs font-black text-slate-400 uppercase mb-2">Class Level</label>
-            <select value={classLevel} onChange={(e) => setClassLevel(e.target.value as ClassLevel)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
+            <select 
+              disabled={isClassLocked}
+              value={classLevel} 
+              onChange={(e) => setClassLevel(e.target.value as ClassLevel)} 
+              className={`w-full p-3 border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-indigo-500 outline-none transition-all ${isClassLocked ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-50'}`}
+            >
               {ALL_CLASSES.map(cls => <option key={cls} value={cls}>Class {cls}</option>)}
             </select>
           </div>
@@ -110,9 +132,6 @@ const StudentForm: React.FC<StudentFormProps> = ({ onAdd, onCancel, editStudent 
               placeholder="Leave blank for auto-summing main subjects"
               className="w-full p-3 bg-white border border-slate-200 rounded-xl font-black text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none"
             />
-            <p className="mt-2 text-[10px] text-slate-400 font-bold uppercase leading-relaxed">
-              If defined, this value will be used as the final Total for ranking and percentage calculation, ignoring the subject mark sum.
-            </p>
         </div>
 
         <div className="flex justify-end space-x-4 pt-4">

@@ -5,6 +5,7 @@ import { GET_SUBJECTS_FOR_CLASS } from '../constants';
 import { generateStudentRemarks } from '../utils/gemini';
 import { useAuth } from '../contexts/AuthContext';
 import { getColumnPermission, canPerformAdminAction } from '../utils/permissions';
+import { exportToCSV } from '../utils/export';
 
 interface ResultTableProps {
   results: CalculatedResult[];
@@ -38,6 +39,10 @@ const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, 
     setLoadingRemarks(prev => ({ ...prev, [student.id]: false }));
   };
 
+  const handleExport = () => {
+    exportToCSV(results, classLevel);
+  };
+
   const isAdminAuthorized = canPerformAdminAction(user, classLevel);
 
   return (
@@ -55,15 +60,27 @@ const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, 
             className="block w-full pl-10 pr-3 py-3 border-2 border-slate-100 rounded-2xl bg-white placeholder-slate-400 focus:outline-none focus:border-indigo-500 font-bold transition-all shadow-sm"
           />
         </div>
-        {highlightSubject && (
-          <div className="flex items-center gap-2 px-6 py-2 bg-indigo-600 text-white rounded-2xl animate-in fade-in zoom-in-95 duration-200 shadow-lg shadow-indigo-100">
-            <span className="text-[10px] font-black uppercase tracking-widest">Sorting Focus:</span>
-            <span className="text-xs font-black uppercase">
-              {subjects.find(s => s.key === highlightSubject)?.label || highlightSubject}
-            </span>
-            <i className="fa-solid fa-arrow-down-9-1 text-[10px] ml-1"></i>
-          </div>
-        )}
+        
+        <div className="flex items-center gap-3">
+          {highlightSubject && (
+            <div className="flex items-center gap-2 px-6 py-2 bg-indigo-600 text-white rounded-2xl animate-in fade-in zoom-in-95 duration-200 shadow-lg shadow-indigo-100">
+              <span className="text-[10px] font-black uppercase tracking-widest">Focus:</span>
+              <span className="text-xs font-black uppercase">
+                {subjects.find(s => s.key === highlightSubject)?.label || highlightSubject}
+              </span>
+            </div>
+          )}
+          
+          {(user?.role === Role.ADMIN || user?.role === Role.CLASS_INCHARGE) && (
+            <button 
+              onClick={handleExport}
+              className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 text-slate-700 font-black rounded-2xl text-[10px] uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm"
+            >
+              <i className="fa-solid fa-file-csv text-emerald-500"></i>
+              Download Result Sheet
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="bg-white rounded-[32px] shadow-sm border border-slate-100 overflow-hidden">

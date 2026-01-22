@@ -26,7 +26,7 @@ const AppContent: React.FC = () => {
       return [];
     }
   });
-  const [view, setView] = useState<'sheet' | 'dashboard' | 'entry' | 'subject-entry' | 'staff'>('dashboard'); // Default to Dashboard for Hub feel
+  const [view, setView] = useState<'sheet' | 'dashboard' | 'entry' | 'subject-entry' | 'staff'>('dashboard');
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
 
   // Import States
@@ -106,7 +106,7 @@ const AppContent: React.FC = () => {
         headers.forEach(h => {
           const lh = h.toLowerCase();
           if (['roll no', 'roll', 'id', 'sr no'].includes(lh)) initialMap.rollNo = h;
-          if (['name', 'student'].includes(lh)) initialMap.name = h;
+          if (['name', 'student', 'student name'].includes(lh)) initialMap.name = h;
           subjects.forEach(s => {
             if (s.label.toLowerCase() === lh || s.key.toLowerCase() === lh) initialMap.subjectMapping[s.key] = h;
           });
@@ -124,6 +124,10 @@ const AppContent: React.FC = () => {
     if (!csvPreview || !mapping.name || !mapping.rollNo) return alert('Map columns first.');
     const nameIdx = csvPreview.headers.indexOf(mapping.name);
     const rollIdx = csvPreview.headers.indexOf(mapping.rollNo);
+    
+    // Requirement 3 Logic: Check role for class security
+    const targetClass = user?.role === Role.CLASS_INCHARGE ? user.assignedClass! : activeClass;
+
     const imported: Student[] = csvPreview.rows.map((row, idx) => {
       const studentMarks: any = {};
       Object.entries(mapping.subjectMapping).forEach(([key, header]) => {
@@ -134,7 +138,7 @@ const AppContent: React.FC = () => {
         id: `imp-${Date.now()}-${idx}`,
         rollNo: row[rollIdx],
         name: row[nameIdx],
-        classLevel: activeClass,
+        classLevel: targetClass,
         marks: studentMarks as StudentMarks
       };
     });
@@ -150,7 +154,12 @@ const AppContent: React.FC = () => {
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-[40px] w-full max-w-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
             <div className="p-8 bg-indigo-600 text-white flex justify-between items-center">
-              <h3 className="text-2xl font-black">Import Wizard</h3>
+              <div>
+                <h3 className="text-2xl font-black">Excel Import Wizard</h3>
+                <p className="text-xs text-indigo-100 font-bold uppercase mt-1">
+                   {user?.role === Role.CLASS_INCHARGE ? `Forcing Class ${user.assignedClass}` : `Importing to Class ${activeClass}`}
+                </p>
+              </div>
               <button onClick={() => setCsvPreview(null)} className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center"><i className="fa-solid fa-xmark"></i></button>
             </div>
             <div className="p-8 overflow-y-auto space-y-8 custom-scrollbar">
@@ -168,6 +177,28 @@ const AppContent: React.FC = () => {
                     <option value="">-- Select --</option>
                     {csvPreview.headers.map(h => <option key={h} value={h}>{h}</option>)}
                   </select>
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Subject Mapping</span>
+                <div className="grid grid-cols-2 gap-4">
+                  {GET_SUBJECTS_FOR_CLASS(activeClass).map(sub => (
+                    <div key={sub.key}>
+                      <label className="text-[10px] font-black text-slate-500 uppercase mb-1 block truncate">{sub.label}</label>
+                      <select 
+                        value={mapping.subjectMapping[sub.key] || ''} 
+                        onChange={e => setMapping({
+                          ...mapping, 
+                          subjectMapping: { ...mapping.subjectMapping, [sub.key]: e.target.value }
+                        })}
+                        className="w-full p-2 bg-white border border-slate-100 rounded-lg text-xs font-bold"
+                      >
+                        <option value="">-- Skip --</option>
+                        {csvPreview.headers.map(h => <option key={h} value={h}>{h}</option>)}
+                      </select>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -192,10 +223,18 @@ const AppContent: React.FC = () => {
           </div>
         </div>
         <div className="flex gap-3">
-          {canEditStudent(activeClass) && (
-            <button onClick={() => { setEditingStudent(null); setView('entry'); }} className="bg-slate-900 text-white px-6 py-3 rounded-2xl text-[10px] font-black shadow-xl hover:bg-indigo-600 hover:-translate-y-1 transition-all uppercase tracking-widest">
-              <i className="fa-solid fa-plus-circle mr-2"></i>Record
-            </button>
+          {(user?.role === Role.ADMIN || user?.role === Role.CLASS_INCHARGE) && (
+            <div className="flex items-center gap-2">
+               <button 
+                  onClick={() => fileInputRef.current?.click()} 
+                  className="bg-emerald-50 border border-emerald-100 text-emerald-600 px-6 py-3 rounded-2xl text-[10px] font-black shadow-sm hover:bg-emerald-100 transition-all uppercase tracking-widest"
+                >
+                 <i className="fa-solid fa-file-excel mr-2"></i>Bulk Import
+               </button>
+               <button onClick={() => { setEditingStudent(null); setView('entry'); }} className="bg-slate-900 text-white px-6 py-3 rounded-2xl text-[10px] font-black shadow-xl hover:bg-indigo-600 hover:-translate-y-1 transition-all uppercase tracking-widest">
+                 <i className="fa-solid fa-plus-circle mr-2"></i>New Enrollment
+               </button>
+            </div>
           )}
           <button onClick={logout} className="bg-white border border-slate-100 text-slate-400 hover:text-red-500 font-black text-[10px] px-6 py-3 rounded-2xl transition-all uppercase tracking-widest flex items-center">
             <i className="fa-solid fa-sign-out mr-2"></i>QUIT
@@ -224,11 +263,6 @@ const AppContent: React.FC = () => {
                <button onClick={() => setView('staff')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${view === 'staff' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Staff</button>
             )}
           </nav>
-          {user.role === Role.ADMIN && (
-             <button onClick={() => fileInputRef.current?.click()} className="w-10 h-10 flex items-center justify-center rounded-2xl border border-slate-200 text-emerald-600 hover:bg-emerald-50 transition-all">
-               <i className="fa-solid fa-file-excel"></i>
-             </button>
-          )}
         </div>
       </div>
 
@@ -259,7 +293,7 @@ const AppContent: React.FC = () => {
            <i className="fa-solid fa-shield-check text-indigo-200"></i>
            <span>Secure Context: {user.role}</span>
         </div>
-        <div>EduRank Engine • v5.2 Optimized</div>
+        <div>EduRank Engine • v5.3 Optimized</div>
       </footer>
     </div>
   );
