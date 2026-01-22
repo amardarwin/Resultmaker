@@ -1,16 +1,17 @@
-
 import React, { useState, useEffect } from 'react';
-import { ClassLevel, Student, StudentMarks, Role } from '../types';
+import { ClassLevel, Student, StudentMarks, Role, ExamType } from '../types';
 import { ALL_CLASSES, GET_SUBJECTS_FOR_CLASS } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
+import { getMarkKey } from '../utils/examRules';
 
 interface StudentFormProps {
   onAdd: (student: Student) => void;
   onCancel: () => void;
   editStudent?: Student;
+  examType: ExamType;
 }
 
-const StudentForm: React.FC<StudentFormProps> = ({ onAdd, onCancel, editStudent }) => {
+const StudentForm: React.FC<StudentFormProps> = ({ onAdd, onCancel, editStudent, examType }) => {
   const { user } = useAuth();
   
   // Requirement 1: Force ClassLevel for Incharges
@@ -21,7 +22,19 @@ const StudentForm: React.FC<StudentFormProps> = ({ onAdd, onCancel, editStudent 
   const [rollNo, setRollNo] = useState(editStudent?.rollNo || '');
   const [name, setName] = useState(editStudent?.name || '');
   const [password, setPassword] = useState(editStudent?.password || '1234');
-  const [marks, setMarks] = useState<Partial<StudentMarks>>(editStudent?.marks || {});
+  
+  const subjects = GET_SUBJECTS_FOR_CLASS(classLevel);
+
+  // Fix: Initialize marks state by extracting relevant marks for the current examType
+  const [marks, setMarks] = useState<Partial<StudentMarks>>(() => {
+    const initial: Partial<StudentMarks> = {};
+    subjects.forEach(sub => {
+      const mKey = getMarkKey(examType, sub.key);
+      initial[sub.key] = editStudent?.marks[mKey] || 0;
+    });
+    return initial;
+  });
+  
   const [manualTotal, setManualTotal] = useState<string>(editStudent?.manualTotal?.toString() || '');
 
   // Safety Redirect: Subject Teachers should not access this
@@ -29,8 +42,6 @@ const StudentForm: React.FC<StudentFormProps> = ({ onAdd, onCancel, editStudent 
     onCancel();
     return null;
   }
-
-  const subjects = GET_SUBJECTS_FOR_CLASS(classLevel);
 
   const handleMarkChange = (key: keyof StudentMarks, value: string) => {
     const numValue = value === '' ? 0 : parseInt(value) || 0;
@@ -41,9 +52,11 @@ const StudentForm: React.FC<StudentFormProps> = ({ onAdd, onCancel, editStudent 
     e.preventDefault();
     if (!rollNo || !name) return alert('Please fill in Roll No and Name');
 
-    const finalMarks: any = {};
+    // Fix: Save marks using exam-prefixed keys to preserve other exam data
+    const finalMarks: Record<string, number> = { ...(editStudent?.marks || {}) };
     subjects.forEach(sub => {
-      finalMarks[sub.key] = marks[sub.key] || 0;
+      const mKey = getMarkKey(examType, sub.key);
+      finalMarks[mKey] = marks[sub.key] || 0;
     });
 
     const student: Student = {
@@ -52,7 +65,7 @@ const StudentForm: React.FC<StudentFormProps> = ({ onAdd, onCancel, editStudent 
       name,
       password,
       classLevel,
-      marks: finalMarks as StudentMarks,
+      marks: finalMarks,
       manualTotal: manualTotal !== '' ? parseInt(manualTotal) : undefined
     };
 
@@ -104,7 +117,7 @@ const StudentForm: React.FC<StudentFormProps> = ({ onAdd, onCancel, editStudent 
 
         <div className="space-y-4">
           <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Academic Marks</span>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Academic Marks ({examType})</span>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {subjects.map(sub => (

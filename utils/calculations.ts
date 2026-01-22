@@ -1,18 +1,25 @@
-
-import { Student, CalculatedResult, SubjectType, StudentMarks, ClassLevel } from '../types';
+import { Student, CalculatedResult, SubjectType, StudentMarks, ClassLevel, ExamType } from '../types';
 import { GET_SUBJECTS_FOR_CLASS, ALL_CLASSES } from '../constants';
+import { getExamMaxMarks, getMarkKey } from './examRules';
 
-export const calculateStudentResult = (student: Student, maxMarksPerSubject: number = 100): Omit<CalculatedResult, 'rank'> => {
+export const calculateStudentResult = (
+  student: Student, 
+  examType: ExamType
+): Omit<CalculatedResult, 'rank'> => {
   const subjects = GET_SUBJECTS_FOR_CLASS(student.classLevel);
   const mainSubjects = subjects.filter(s => s.type === SubjectType.MAIN);
   
   const calculatedTotal = mainSubjects.reduce((acc, sub) => {
-    return acc + (student.marks[sub.key] || 0);
+    const key = getMarkKey(examType, sub.key);
+    return acc + (student.marks[key] || 0);
   }, 0);
 
   const total = student.manualTotal !== undefined ? student.manualTotal : calculatedTotal;
 
-  const maxTotal = mainSubjects.length * maxMarksPerSubject;
+  const maxTotal = mainSubjects.reduce((acc, sub) => {
+    return acc + getExamMaxMarks(examType, sub);
+  }, 0);
+
   const percentage = maxTotal > 0 ? (total / maxTotal) * 100 : 0;
 
   return {
@@ -26,18 +33,19 @@ export const calculateStudentResult = (student: Student, maxMarksPerSubject: num
 export const rankStudents = (
   students: Student[], 
   classLevel: string, 
-  maxMarks: number,
-  sortBySubject?: keyof StudentMarks | 'total' | 'percentage'
+  examType: ExamType,
+  sortBySubject?: string
 ): CalculatedResult[] => {
   const classStudents = students.filter(s => s.classLevel === classLevel);
   if (classStudents.length === 0) return [];
 
-  const results = classStudents.map(s => calculateStudentResult(s, maxMarks));
+  const results = classStudents.map(s => calculateStudentResult(s, examType));
   
   const sorted = [...results].sort((a, b) => {
     if (sortBySubject && sortBySubject !== 'total' && sortBySubject !== 'percentage') {
-      const valA = a.marks[sortBySubject] ?? 0;
-      const valB = b.marks[sortBySubject] ?? 0;
+      const key = getMarkKey(examType, sortBySubject);
+      const valA = a.marks[key] ?? 0;
+      const valB = b.marks[key] ?? 0;
       return valB - valA;
     }
     return b.total - a.total;
@@ -74,14 +82,16 @@ export const getPerformanceBands = (results: CalculatedResult[]) => {
   return bands;
 };
 
-export const calculateSubjectStats = (results: CalculatedResult[], classLevel: string, maxMarks: number) => {
+export const calculateSubjectStats = (results: CalculatedResult[], classLevel: string, examType: ExamType) => {
   const subjects = GET_SUBJECTS_FOR_CLASS(classLevel as any);
   
   return subjects.map(sub => {
-    const scores = results.map(r => r.marks[sub.key] ?? 0);
+    const maxVal = getExamMaxMarks(examType, sub);
+    const mKey = getMarkKey(examType, sub.key);
+    const scores = results.map(r => r.marks[mKey] ?? 0);
     const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
     const highest = scores.length > 0 ? Math.max(...scores) : 0;
-    const passCount = scores.filter(s => (s / maxMarks) * 100 >= 33).length;
+    const passCount = scores.filter(s => (s / maxVal) * 100 >= 33).length;
     const passPerc = scores.length > 0 ? (passCount / scores.length) * 100 : 0;
 
     return {
@@ -96,16 +106,22 @@ export const calculateSubjectStats = (results: CalculatedResult[], classLevel: s
   });
 };
 
-export const getComparativeSubjectStats = (allStudents: Student[], subjectKey: keyof StudentMarks) => {
+export const getComparativeSubjectStats = (allStudents: Student[], subjectKey: string, examType: ExamType) => {
   return ALL_CLASSES.map(cls => {
     const classResults = allStudents
       .filter(s => s.classLevel === cls)
-      .map(s => calculateStudentResult(s, 100)); // Standardized to 100 for comparison
+      .map(s => calculateStudentResult(s, examType));
     
-    const scores = classResults.map(r => r.marks[subjectKey] ?? 0);
+    const mKey = getMarkKey(examType, subjectKey);
+    const scores = classResults.map(r => r.marks[mKey] ?? 0);
     const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
     const highest = scores.length > 0 ? Math.max(...scores) : 0;
-    const passCount = scores.filter(s => s >= 33).length;
+    const passCount = scores.filter(s => {
+      // Find subject config for max marks
+      const subConfig = GET_SUBJECTS_FOR_CLASS(cls).find(sc => sc.key === subjectKey);
+      const max = subConfig ? getExamMaxMarks(examType, subConfig) : 100;
+      return (s / max) * 100 >= 33;
+    }).length;
     const passPerc = scores.length > 0 ? (passCount / scores.length) * 100 : 0;
 
     return {

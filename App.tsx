@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { Student, ClassLevel, CalculatedResult, StudentMarks, ColumnMapping, Role } from './types';
+import { Student, ClassLevel, CalculatedResult, StudentMarks, ColumnMapping, Role, ExamType } from './types';
 import { ALL_CLASSES, GET_SUBJECTS_FOR_CLASS } from './constants';
 import { rankStudents } from './utils/calculations';
 import Dashboard from './components/Dashboard';
@@ -14,12 +14,19 @@ import AttendanceManager from './components/AttendanceManager';
 import HomeworkTracker from './components/HomeworkTracker';
 import Sidebar from './components/Sidebar';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { getMarkKey } from './utils/examRules';
 
 const AppContent: React.FC = () => {
   const { user, schoolConfig, logout, isViewRestricted, canEditStudent, accessibleClasses } = useAuth();
   const [activeClass, setActiveClass] = useState<ClassLevel>('6');
-  const [maxMarks, setMaxMarks] = useState(100);
+  const [activeExamType, setActiveExamType] = useState<ExamType>(ExamType.FINAL);
+  
   const [sortBySubject, setSortBySubject] = useState<keyof StudentMarks | null>(null);
+  const [dashboardFilter, setDashboardFilter] = useState<{ subject: keyof StudentMarks | null, band: string | null }>({
+    subject: null,
+    band: null
+  });
+
   const [students, setStudents] = useState<Student[]>(() => {
     try {
       const saved = localStorage.getItem('school_results_students');
@@ -45,12 +52,14 @@ const AppContent: React.FC = () => {
   }, [students]);
 
   const classResults = useMemo(() => {
-    let results = rankStudents(students, activeClass, maxMarks, sortBySubject || undefined);
+    const effectiveSort = sortBySubject || dashboardFilter.subject || undefined;
+    let results = rankStudents(students, activeClass, activeExamType, effectiveSort as string);
+    
     if (user?.role === Role.STUDENT && user.rollNo) {
       results = results.filter(r => r.rollNo === user.rollNo);
     }
     return results;
-  }, [students, activeClass, maxMarks, sortBySubject, user]);
+  }, [students, activeClass, activeExamType, sortBySubject, dashboardFilter.subject, user]);
 
   if (!schoolConfig?.isSetup) return <SchoolSetup />;
   if (!user) return <LoginScreen />;
@@ -129,21 +138,32 @@ const AppContent: React.FC = () => {
     const targetClass = user?.role === Role.CLASS_INCHARGE ? user.assignedClass! : activeClass;
 
     const imported: Student[] = csvPreview.rows.map((row, idx) => {
-      const studentMarks: any = {};
+      const studentMarks: Record<string, number> = {};
       Object.entries(mapping.subjectMapping).forEach(([key, header]) => {
         const hIdx = csvPreview.headers.indexOf(header);
-        studentMarks[key] = parseInt(row[hIdx]) || 0;
+        const mKey = getMarkKey(activeExamType, key);
+        studentMarks[mKey] = parseInt(row[hIdx]) || 0;
       });
       return {
         id: `imp-${Date.now()}-${idx}`,
         rollNo: row[rollIdx],
         name: row[nameIdx],
         classLevel: targetClass,
-        marks: studentMarks as StudentMarks
+        marks: studentMarks
       };
     });
     setStudents(prev => [...prev, ...imported]);
     setCsvPreview(null);
+  };
+
+  const handleDashboardSubjectClick = (subject: keyof StudentMarks) => {
+    setDashboardFilter(prev => ({ ...prev, subject: prev.subject === subject ? null : subject }));
+    setView('sheet');
+  };
+
+  const handleDashboardBandClick = (band: string) => {
+    setDashboardFilter(prev => ({ ...prev, band: prev.band === band ? null : band }));
+    setView('sheet');
   };
 
   const renderContent = () => {
@@ -156,6 +176,11 @@ const AppContent: React.FC = () => {
             className={activeClass} 
             onClassChange={(cls) => setActiveClass(cls)}
             onNavigate={(v) => setView(v)}
+            examType={activeExamType}
+            activeFilters={dashboardFilter}
+            onSubjectClick={handleDashboardSubjectClick}
+            onBandClick={handleDashboardBandClick}
+            onClearFilters={() => setDashboardFilter({ subject: null, band: null })}
           />
         );
       case 'attendance':
@@ -174,7 +199,11 @@ const AppContent: React.FC = () => {
             classLevel={activeClass} 
             onEdit={handleEdit} 
             onDelete={handleDelete} 
-            highlightSubject={sortBySubject} 
+            highlightSubject={sortBySubject || dashboardFilter.subject}
+            activeFilters={dashboardFilter}
+            onClearFilters={() => setDashboardFilter({ subject: null, band: null })}
+            examType={activeExamType}
+            onExamTypeChange={setActiveExamType}
           />
         );
       case 'entry':
@@ -183,6 +212,7 @@ const AppContent: React.FC = () => {
             onAdd={handleAddOrUpdate} 
             onCancel={() => setView('sheet')} 
             editStudent={editingStudent || undefined} 
+            examType={activeExamType}
           />
         );
       case 'entry-portal':
@@ -192,13 +222,26 @@ const AppContent: React.FC = () => {
             students={students.filter(s => s.classLevel === activeClass)} 
             onSave={handleBulkUpdate} 
             onCancel={() => setView('sheet')} 
-            initialMaxMarks={maxMarks} 
+            examType={activeExamType}
+            onExamTypeChange={setActiveExamType}
           />
         );
       case 'staff':
         return <StaffManagement />;
       default:
-        return <Dashboard results={classResults} allStudents={students} className={activeClass} onNavigate={setView} />;
+        return (
+          <Dashboard 
+            results={classResults} 
+            allStudents={students} 
+            className={activeClass} 
+            onNavigate={setView} 
+            examType={activeExamType}
+            activeFilters={dashboardFilter}
+            onSubjectClick={handleDashboardSubjectClick}
+            onBandClick={handleDashboardBandClick}
+            onClearFilters={() => setDashboardFilter({ subject: null, band: null })}
+          />
+        );
     }
   };
 

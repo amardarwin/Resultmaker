@@ -7,6 +7,13 @@ export enum Role {
   STUDENT = 'STUDENT'
 }
 
+export enum ExamType {
+  BIMONTHLY = 'Bimonthly',
+  TERM = 'Term',
+  PREBOARD = 'Preboard',
+  FINAL = 'Final'
+}
+
 export interface TeachingAssignment {
   classLevel: ClassLevel;
   subjects: (keyof StudentMarks)[];
@@ -34,6 +41,8 @@ export interface SchoolConfig {
 }
 
 export interface StudentMarks {
+  // Add index signature for dynamic access
+  [key: string]: number | undefined;
   pbi?: number;
   pbi_a?: number;
   pbi_b?: number;
@@ -52,7 +61,8 @@ export interface Student {
   rollNo: string;
   name: string;
   classLevel: ClassLevel;
-  marks: StudentMarks;
+  // Format: "examType_subjectKey" -> score
+  marks: Record<string, number>;
   manualTotal?: number;
   password?: string;
 }
@@ -81,7 +91,6 @@ export interface ColumnMapping {
   subjectMapping: Record<string, string>;
 }
 
-// NEW TYPES FOR AUTOMATION SYSTEM
 export type AttendanceStatus = 'P' | 'A' | 'L';
 
 export interface AttendanceRecord {

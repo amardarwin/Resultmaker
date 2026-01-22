@@ -1,11 +1,12 @@
-
 import React, { useState, useMemo } from 'react';
-import { CalculatedResult, ClassLevel, SubjectType, StudentMarks, Role } from '../types';
+import { CalculatedResult, ClassLevel, SubjectType, StudentMarks, Role, ExamType } from '../types';
 import { GET_SUBJECTS_FOR_CLASS } from '../constants';
 import { generateStudentRemarks } from '../utils/gemini';
 import { useAuth } from '../contexts/AuthContext';
 import { getColumnPermission, canPerformAdminAction } from '../utils/permissions';
 import { exportToCSV } from '../utils/export';
+import { getPerformanceBands } from '../utils/calculations';
+import { getExamMaxMarks, getMarkKey } from '../utils/examRules';
 
 interface ResultTableProps {
   results: CalculatedResult[];
@@ -13,24 +14,62 @@ interface ResultTableProps {
   onEdit: (student: CalculatedResult) => void;
   onDelete: (id: string) => void;
   highlightSubject?: keyof StudentMarks | null;
+  activeFilters: { subject: keyof StudentMarks | null, band: string | null };
+  onClearFilters: () => void;
+  examType: ExamType;
+  onExamTypeChange: (type: ExamType) => void;
 }
 
-const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, onDelete, highlightSubject }) => {
+const ResultTable: React.FC<ResultTableProps> = ({ 
+  results, 
+  classLevel, 
+  onEdit, 
+  onDelete, 
+  highlightSubject,
+  activeFilters,
+  onClearFilters,
+  examType,
+  onExamTypeChange
+}) => {
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [remarks, setRemarks] = useState<Record<string, string>>({});
   const [loadingRemarks, setLoadingRemarks] = useState<Record<string, boolean>>({});
   const subjects = GET_SUBJECTS_FOR_CLASS(classLevel);
 
-  const filteredResults = useMemo(() => {
-    if (!searchTerm.trim()) return results;
-    const lowerSearch = searchTerm.toLowerCase();
-    return results.filter(
-      (res) =>
-        res.name.toLowerCase().includes(lowerSearch) ||
-        res.rollNo.toLowerCase().includes(lowerSearch)
-    );
-  }, [results, searchTerm]);
+  // Apply filters from Dashboard + Search
+  const processedResults = useMemo(() => {
+    let list = results;
+
+    // Apply dashboard subject at-risk filter (< 40%)
+    if (activeFilters.subject) {
+      const subConfig = subjects.find(s => s.key === activeFilters.subject)!;
+      const maxMarks = getExamMaxMarks(examType, subConfig);
+      const mKey = getMarkKey(examType, activeFilters.subject as string);
+      list = list.filter(r => ((r.marks[mKey] || 0) / maxMarks) * 100 < 40);
+    }
+
+    // Apply dashboard performance band filter
+    if (activeFilters.band) {
+      const bands = getPerformanceBands(results);
+      const band = bands.find(b => b.range === activeFilters.band);
+      if (band) {
+        list = list.filter(r => r.percentage >= band.min && r.percentage < band.max);
+      }
+    }
+
+    // Apply text search
+    if (searchTerm.trim()) {
+      const lowerSearch = searchTerm.toLowerCase();
+      list = list.filter(
+        (res) =>
+          res.name.toLowerCase().includes(lowerSearch) ||
+          res.rollNo.toLowerCase().includes(lowerSearch)
+      );
+    }
+
+    return list;
+  }, [results, activeFilters, searchTerm, examType, subjects]);
 
   const handleGenerateRemark = async (student: CalculatedResult) => {
     setLoadingRemarks(prev => ({ ...prev, [student.id]: true }));
@@ -40,34 +79,62 @@ const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, 
   };
 
   const handleExport = () => {
-    exportToCSV(results, classLevel);
+    exportToCSV(processedResults, classLevel);
   };
 
   const isAdminAuthorized = canPerformAdminAction(user, classLevel);
+  const hasActiveFilters = activeFilters.subject || activeFilters.band;
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="relative max-w-md w-full">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <i className="fa-solid fa-magnifying-glass text-slate-400"></i>
+        <div className="flex items-center gap-4 flex-1">
+          <div className="relative max-w-sm w-full">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <i className="fa-solid fa-magnifying-glass text-slate-400"></i>
+            </div>
+            <input
+              type="text"
+              placeholder="Search students..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="block w-full pl-10 pr-3 py-3 border-2 border-slate-100 rounded-2xl bg-white placeholder-slate-400 focus:outline-none focus:border-indigo-500 font-bold transition-all shadow-sm"
+            />
           </div>
-          <input
-            type="text"
-            placeholder="Search result sheet..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="block w-full pl-10 pr-3 py-3 border-2 border-slate-100 rounded-2xl bg-white placeholder-slate-400 focus:outline-none focus:border-indigo-500 font-bold transition-all shadow-sm"
-          />
+
+          <div className="bg-white p-1 rounded-2xl border-2 border-slate-100 flex shadow-sm">
+            {Object.values(ExamType).map(type => (
+              <button 
+                key={type}
+                onClick={() => onExamTypeChange(type)}
+                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${
+                  examType === type ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                {type}
+              </button>
+            ))}
+          </div>
         </div>
         
         <div className="flex items-center gap-3">
-          {highlightSubject && (
-            <div className="flex items-center gap-2 px-6 py-2 bg-indigo-600 text-white rounded-2xl animate-in fade-in zoom-in-95 duration-200 shadow-lg shadow-indigo-100">
-              <span className="text-[10px] font-black uppercase tracking-widest">Focus:</span>
-              <span className="text-xs font-black uppercase">
-                {subjects.find(s => s.key === highlightSubject)?.label || highlightSubject}
-              </span>
+          {hasActiveFilters && (
+            <div className="flex items-center gap-3 bg-white border-2 border-indigo-100 px-4 py-2 rounded-2xl shadow-sm animate-in fade-in slide-in-from-right-2">
+              <div className="flex flex-col">
+                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Active Filter</span>
+                <span className="text-[10px] font-black text-indigo-600 uppercase">
+                  {activeFilters.subject && `At-risk in ${activeFilters.subject.toUpperCase()}`}
+                  {activeFilters.subject && activeFilters.band && ' + '}
+                  {activeFilters.band && `Band: ${activeFilters.band}`}
+                </span>
+              </div>
+              <button 
+                onClick={onClearFilters}
+                className="w-7 h-7 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center hover:bg-indigo-600 hover:text-white transition-all"
+                title="Clear Filters"
+              >
+                <i className="fa-solid fa-xmark"></i>
+              </button>
             </div>
           )}
           
@@ -77,7 +144,7 @@ const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, 
               className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 text-slate-700 font-black rounded-2xl text-[10px] uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm"
             >
               <i className="fa-solid fa-file-csv text-emerald-500"></i>
-              Download Result Sheet
+              Export Current
             </button>
           )}
         </div>
@@ -94,17 +161,19 @@ const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, 
                 {subjects.map(sub => {
                   const perm = getColumnPermission(user, classLevel, sub.key);
                   const isLocked = perm === 'READ';
+                  const isFocused = sub.key === highlightSubject;
                   return (
                     <th 
                       key={sub.key} 
                       className={`px-4 py-5 text-center whitespace-nowrap border-r border-slate-100 transition-all ${
-                        sub.key === highlightSubject ? 'bg-indigo-600 text-white z-30' : 
+                        isFocused ? 'bg-indigo-600 text-white z-30' : 
                         sub.type === SubjectType.GRADING ? 'bg-orange-50/50 text-orange-800 italic' : ''
                       } ${isLocked ? 'opacity-40' : ''}`}
                     >
-                      <div className="flex items-center justify-center gap-2">
-                        {sub.label}
-                        {isLocked && <i className="fa-solid fa-lock text-[8px] mb-0.5"></i>}
+                      <div className="flex flex-col items-center justify-center">
+                        <span className="mb-1">{sub.label}</span>
+                        <span className="text-[8px] opacity-60 font-black">Max: {getExamMaxMarks(examType, sub)}</span>
+                        {isLocked && <i className="fa-solid fa-lock text-[8px] mt-1"></i>}
                       </div>
                     </th>
                   );
@@ -118,7 +187,7 @@ const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, 
             </thead>
             
             <tbody className="divide-y divide-slate-100">
-              {filteredResults.length === 0 ? (
+              {processedResults.length === 0 ? (
                 <tr>
                   <td colSpan={subjects.length + 6} className="px-6 py-20 text-center text-slate-400 italic bg-white">
                     <div className="flex flex-col items-center">
@@ -128,7 +197,7 @@ const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, 
                   </td>
                 </tr>
               ) : (
-                filteredResults.map((res) => (
+                processedResults.map((res) => (
                   <React.Fragment key={res.id}>
                     <tr className="hover:bg-slate-50/50 transition-colors group">
                       <td className="px-6 py-5 font-black text-slate-500 sticky left-0 bg-white group-hover:bg-slate-50/50 z-10 border-r border-slate-100">
@@ -145,21 +214,16 @@ const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, 
                             }`}>
                               {res.status}
                             </span>
-                            {user?.role !== Role.STUDENT && (
-                              <button 
-                                onClick={() => handleGenerateRemark(res)}
-                                className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all"
-                              >
-                                {loadingRemarks[res.id] ? <i className="fa-solid fa-spinner animate-spin"></i> : <i className="fa-solid fa-wand-magic-sparkles"></i>}
-                              </button>
-                            )}
                           </div>
                         </div>
                       </td>
                       
                       {subjects.map(sub => {
-                        const score = res.marks[sub.key] ?? 0;
-                        const isFail = sub.type === SubjectType.MAIN && score < 33;
+                        const mKey = getMarkKey(examType, sub.key);
+                        const score = res.marks[mKey] ?? 0;
+                        const maxMarks = getExamMaxMarks(examType, sub);
+                        const isAtRisk = ((score / maxMarks) * 100) < 40;
+                        const isFail = sub.type === SubjectType.MAIN && score < (maxMarks * 0.33);
                         const perm = getColumnPermission(user, classLevel, sub.key);
                         const isLocked = perm === 'READ';
                         const isHighlighted = sub.key === highlightSubject;
@@ -172,8 +236,8 @@ const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, 
                               isLocked ? 'bg-slate-50 opacity-40' : ''
                             }`}
                           >
-                            <span className={`text-sm font-bold ${isFail ? 'text-red-600' : ''} ${isHighlighted ? 'text-white' : 'text-slate-600'}`}>
-                              {res.marks[sub.key] ?? '-'}
+                            <span className={`text-sm font-bold ${isAtRisk && isHighlighted ? 'text-red-300' : isFail ? 'text-red-600' : isHighlighted ? 'text-white' : 'text-slate-600'}`}>
+                              {res.marks[mKey] ?? '-'}
                             </span>
                           </td>
                         );
@@ -209,24 +273,6 @@ const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, 
                         </td>
                       )}
                     </tr>
-                    
-                    {remarks[res.id] && (
-                      <tr className="bg-indigo-50/30">
-                        <td colSpan={subjects.length + 6} className="px-8 py-4 border-b border-indigo-100">
-                          <div className="flex items-center gap-4">
-                            <div className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse"></div>
-                            <p className="text-xs font-bold text-indigo-700 italic tracking-tight">"{remarks[res.id]}"</p>
-                            <button onClick={() => setRemarks(prev => {
-                              const next = {...prev};
-                              delete next[res.id];
-                              return next;
-                            })} className="ml-auto text-indigo-300 hover:text-indigo-600">
-                              <i className="fa-solid fa-circle-xmark"></i>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
                   </React.Fragment>
                 ))
               )}

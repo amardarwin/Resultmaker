@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { CalculatedResult, Student, StudentMarks, ClassLevel, Role, AttendanceRecord, HomeworkTask } from '../types';
-import { getPerformanceBands, calculateSubjectStats } from '../utils/calculations';
+import React, { useState, useEffect, useMemo } from 'react';
+import { CalculatedResult, Student, StudentMarks, ClassLevel, Role, AttendanceRecord, HomeworkTask, ExamType } from '../types';
+import { getPerformanceBands, calculateSubjectStats, getComparativeSubjectStats } from '../utils/calculations';
 import { useAuth } from '../contexts/AuthContext';
+import { ALL_CLASSES, GET_SUBJECTS_FOR_CLASS } from '../constants';
+import { getExamMaxMarks, getMarkKey } from '../utils/examRules';
 
 interface DashboardProps {
   results: CalculatedResult[];
@@ -9,6 +11,11 @@ interface DashboardProps {
   className: string;
   onClassChange?: (cls: ClassLevel) => void;
   onNavigate: (view: any) => void;
+  examType: ExamType;
+  activeFilters: { subject: keyof StudentMarks | null, band: string | null };
+  onSubjectClick: (subject: keyof StudentMarks) => void;
+  onBandClick: (band: string) => void;
+  onClearFilters: () => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ 
@@ -16,14 +23,19 @@ const Dashboard: React.FC<DashboardProps> = ({
   allStudents,
   className, 
   onClassChange,
-  onNavigate
+  onNavigate,
+  examType,
+  activeFilters,
+  onSubjectClick,
+  onBandClick,
+  onClearFilters
 }) => {
   const { user } = useAuth();
   const [todayAttendance, setTodayAttendance] = useState<number>(100);
   const [pendingTasks, setPendingTasks] = useState<number>(0);
+  const [comparativeSubject, setComparativeSubject] = useState<keyof StudentMarks>('hindi');
 
   useEffect(() => {
-    // Calculate today's attendance for the selected class
     const savedAttendance: AttendanceRecord[] = JSON.parse(localStorage.getItem('attendance_records') || '[]');
     const today = new Date().toISOString().split('T')[0];
     const record = savedAttendance.find(a => a.date === today && a.classLevel === className);
@@ -36,7 +48,6 @@ const Dashboard: React.FC<DashboardProps> = ({
       setTodayAttendance(100);
     }
 
-    // Calculate pending homework tasks
     const tasks: HomeworkTask[] = JSON.parse(localStorage.getItem('homework_tasks') || '[]');
     const classTasks = tasks.filter(t => t.classLevel === className && t.status !== 'Completed');
     setPendingTasks(classTasks.length);
@@ -51,9 +62,21 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const handlePortalNavigate = (cls: ClassLevel) => {
     if (onClassChange) onClassChange(cls);
+    onClearFilters();
   };
 
   const bands = getPerformanceBands(results);
+  // Fix: Pass examType to stats utility functions
+  const subjectStats = calculateSubjectStats(results, className, examType);
+  const compStats = getComparativeSubjectStats(allStudents, comparativeSubject, examType);
+
+  const allAvailableSubjects = useMemo(() => {
+    const set = new Set<string>();
+    ALL_CLASSES.forEach(cls => {
+      GET_SUBJECTS_FOR_CLASS(cls).forEach(s => set.add(s.key));
+    });
+    return Array.from(set);
+  }, []);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -101,69 +124,20 @@ const Dashboard: React.FC<DashboardProps> = ({
         ))}
       </div>
 
-      {/* CHARTS & ACTIVITY */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Attendance Trends */}
-        <div className="lg:col-span-8 bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
-           <div className="flex items-center justify-between mb-8">
-             <h3 className="text-xl font-black text-slate-800">Attendance Trends</h3>
-             <span className="text-[10px] font-black text-indigo-600 uppercase bg-indigo-50 px-3 py-1 rounded-full">Last 7 Days</span>
-           </div>
-           
-           <div className="h-48 flex items-end justify-between gap-4 px-2">
-             {[65, 80, 75, 90, 85, 95, 100].map((val, i) => (
-               <div key={i} className="flex-1 flex flex-col items-center group">
-                 <div className="relative w-full">
-                    <div 
-                      className="w-full bg-slate-100 rounded-xl group-hover:bg-indigo-100 transition-all" 
-                      style={{ height: '180px' }}
-                    ></div>
-                    <div 
-                      className="absolute bottom-0 w-full bg-indigo-600 rounded-xl group-hover:bg-indigo-500 transition-all shadow-lg" 
-                      style={{ height: `${val}%` }}
-                    >
-                      <div className="opacity-0 group-hover:opacity-100 absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[9px] px-2 py-1 rounded font-black">
-                        {val}%
-                      </div>
-                    </div>
-                 </div>
-                 <span className="text-[9px] font-black text-slate-400 mt-3 uppercase">Day {i+1}</span>
-               </div>
-             ))}
-           </div>
-        </div>
-
-        {/* Action Center */}
-        <div className="lg:col-span-4 space-y-4">
-           <div className="bg-slate-900 text-white p-8 rounded-[40px] shadow-xl relative overflow-hidden">
-             <div className="relative z-10">
-               <h3 className="text-xl font-black mb-2">Quick Actions</h3>
-               <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-6 leading-relaxed">System-wide Automation</p>
-               
-               <div className="grid grid-cols-1 gap-3">
-                 <button onClick={() => onNavigate('attendance')} className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-3">
-                   <i className="fa-solid fa-calendar-plus text-emerald-400"></i> Mark Attendance
-                 </button>
-                 <button onClick={() => onNavigate('homework')} className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-3">
-                   <i className="fa-solid fa-file-signature text-orange-400"></i> New Homework Task
-                 </button>
-                 <button onClick={() => onNavigate('sheet')} className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-3">
-                   <i className="fa-solid fa-table-list text-indigo-400"></i> Generate Results
-                 </button>
-               </div>
-             </div>
-             <i className="fa-solid fa-robot absolute -bottom-10 -right-10 text-[160px] opacity-10"></i>
-           </div>
-        </div>
-      </div>
-
       {/* PERFORMANCE BREAKDOWN */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white p-8 rounded-[40px] border border-slate-100">
-           <h3 className="text-xl font-black text-slate-800 mb-6">Class Performance Bands</h3>
+        <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
+           <div className="flex items-center justify-between mb-6">
+             <h3 className="text-xl font-black text-slate-800">Performance Bands</h3>
+             <button onClick={onClearFilters} className="text-[10px] font-black text-indigo-500 uppercase">Reset Filters</button>
+           </div>
            <div className="space-y-4">
               {bands.map((band, idx) => (
-                <div key={idx} className="space-y-1.5">
+                <button 
+                  key={idx} 
+                  onClick={() => onBandClick(band.range)}
+                  className={`w-full text-left space-y-1.5 p-3 rounded-2xl transition-all ${activeFilters.band === band.range ? 'bg-indigo-50 ring-2 ring-indigo-500 shadow-sm' : 'hover:bg-slate-50'}`}
+                >
                   <div className="flex justify-between text-[10px] font-black uppercase tracking-widest">
                     <span className="text-slate-500">{band.range}</span>
                     <span className="text-slate-800">{band.count} Students</span>
@@ -177,24 +151,93 @@ const Dashboard: React.FC<DashboardProps> = ({
                       }}
                     ></div>
                   </div>
-                </div>
+                </button>
               ))}
            </div>
+           <p className="mt-4 text-[9px] font-bold text-slate-400 uppercase tracking-tight italic">Click a band to filter the Result Sheet</p>
         </div>
 
-        <div className="bg-indigo-600 p-8 rounded-[40px] text-white shadow-xl flex flex-col justify-center text-center">
-           <i className="fa-solid fa-award text-6xl mb-6 text-yellow-400"></i>
-           <h3 className="text-2xl font-black mb-2">Class Excellence</h3>
-           <p className="text-indigo-100 text-[10px] font-black uppercase tracking-widest opacity-80 mb-6">Top Performer of the Session</p>
-           {results.length > 0 ? (
-             <div className="bg-white/10 p-6 rounded-3xl border border-white/20">
-               <div className="text-3xl font-black mb-1">{results[0].name}</div>
-               <div className="text-sm font-black text-yellow-300">Rank #1 • {results[0].percentage}%</div>
-             </div>
-           ) : (
-             <div className="text-sm font-black italic opacity-50">Waiting for result generation...</div>
-           )}
+        <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm overflow-hidden flex flex-col">
+           <div className="flex items-center justify-between mb-6">
+             <h3 className="text-xl font-black text-slate-800">Subject Insights</h3>
+             <button onClick={onClearFilters} className="text-[10px] font-black text-indigo-500 uppercase">Clear Focus</button>
+           </div>
+           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+             {subjectStats.map(sub => {
+               // Fix: Calculate max marks and mark key based on examType
+               const maxMarks = getExamMaxMarks(examType, sub as any);
+               const mKey = getMarkKey(examType, sub.key);
+               const atRiskCount = results.filter(r => ((r.marks[mKey] || 0) / maxMarks) * 100 < 40).length;
+               const isSelected = activeFilters.subject === sub.key;
+               
+               return (
+                 <button 
+                  key={sub.key} 
+                  onClick={() => onSubjectClick(sub.key)}
+                  className={`p-4 rounded-3xl border transition-all text-left group relative overflow-hidden ${isSelected ? 'bg-slate-900 border-slate-900 text-white shadow-xl scale-105' : 'bg-slate-50 border-slate-100 hover:bg-white hover:border-indigo-100'}`}
+                 >
+                   <div className="flex justify-between items-start">
+                    <div className={`text-[9px] font-black uppercase mb-1 ${isSelected ? 'text-indigo-300' : 'text-slate-400'}`}>{sub.label}</div>
+                    {atRiskCount > 0 && !isSelected && (
+                      <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+                    )}
+                   </div>
+                   <div className="text-xl font-black">{sub.avg}</div>
+                   <div className={`text-[8px] font-bold uppercase mt-1 ${isSelected ? 'text-emerald-400' : 'text-slate-400'}`}>
+                    {atRiskCount} At-Risk (<40%)
+                   </div>
+                   {isSelected && (
+                     <div className="absolute top-2 right-2 text-indigo-500 text-[8px] font-black bg-white rounded px-1.5 py-0.5">FILTERED</div>
+                   )}
+                 </button>
+               );
+             })}
+           </div>
+           <p className="mt-4 text-[9px] font-bold text-slate-400 uppercase tracking-tight italic">Click a subject to see students scoring &lt; 40% in the sheet</p>
         </div>
+      </div>
+
+      {/* COMPARATIVE STATISTICS SECTION */}
+      <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
+         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+            <div>
+              <h3 className="text-xl font-black text-slate-800">Cross-Class Comparative Analysis</h3>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Benchmark subject metrics across levels 6-10</p>
+            </div>
+            <select 
+              value={comparativeSubject} 
+              onChange={(e) => setComparativeSubject(e.target.value as any)}
+              className="px-4 py-2.5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-xs uppercase tracking-widest outline-none focus:border-indigo-500 transition-all"
+            >
+              {allAvailableSubjects.map(key => (
+                <option key={key} value={key}>{key.toUpperCase()}</option>
+              ))}
+            </select>
+         </div>
+
+         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            {compStats.map((stat, i) => (
+              <div key={i} className="bg-slate-50 p-6 rounded-[32px] border border-slate-100 flex flex-col items-center text-center">
+                <span className="text-xs font-black text-indigo-600 mb-4 bg-white px-3 py-1 rounded-full shadow-sm">Class {stat.classLevel}</span>
+                <div className="space-y-4 w-full">
+                   <div>
+                      <div className="text-2xl font-black text-slate-800">{stat.avg}</div>
+                      <div className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Average Score</div>
+                   </div>
+                   <div className="flex justify-between border-t border-slate-200 pt-4 px-2">
+                      <div className="text-center">
+                         <div className="text-xs font-black text-slate-800">{stat.passPerc}%</div>
+                         <div className="text-[7px] font-black text-slate-300 uppercase">Pass</div>
+                      </div>
+                      <div className="text-center">
+                         <div className="text-xs font-black text-emerald-600">{stat.highest}</div>
+                         <div className="text-[7px] font-black text-slate-300 uppercase">High</div>
+                      </div>
+                   </div>
+                </div>
+              </div>
+            ))}
+         </div>
       </div>
     </div>
   );

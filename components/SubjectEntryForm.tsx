@@ -1,73 +1,90 @@
-
 import React, { useState, useEffect } from 'react';
-import { Student, ClassLevel, StudentMarks, Role } from '../types';
+import { Student, ClassLevel, StudentMarks, Role, ExamType, SubjectConfig } from '../types';
 import { GET_SUBJECTS_FOR_CLASS } from '../constants';
 import { exportAwardList } from '../utils/export';
 import { useAuth } from '../contexts/AuthContext';
+import { getExamMaxMarks, getMarkKey } from '../utils/examRules';
 
 interface SubjectEntryFormProps {
   classLevel: ClassLevel;
   students: Student[];
   onSave: (updatedStudents: Student[]) => void;
   onCancel: () => void;
-  initialMaxMarks: number;
+  examType: ExamType;
+  onExamTypeChange: (type: ExamType) => void;
 }
 
-const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({ classLevel, students, onSave, onCancel, initialMaxMarks }) => {
+const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({ 
+  classLevel, 
+  students, 
+  onSave, 
+  onCancel,
+  examType,
+  onExamTypeChange
+}) => {
   const { user, canEditSubject } = useAuth();
   const allClassSubjects = GET_SUBJECTS_FOR_CLASS(classLevel);
   
-  // Logic: Only show subjects the user has permission to edit
   const editableSubjects = allClassSubjects.filter(s => canEditSubject(s.key, classLevel));
 
-  const [selectedSubject, setSelectedSubject] = useState<keyof StudentMarks>(() => {
+  const [selectedSubjectKey, setSelectedSubjectKey] = useState<keyof StudentMarks>(() => {
     return editableSubjects.length > 0 ? editableSubjects[0].key : allClassSubjects[0].key;
   });
 
-  const [localMarks, setLocalMarks] = useState<{ [studentId: string]: number }>({});
-  const [subjectMaxMarks, setSubjectMaxMarks] = useState<Record<string, number>>(() => {
-    const map: Record<string, number> = {};
-    allClassSubjects.forEach(s => map[s.key] = initialMaxMarks);
-    return map;
-  });
+  const selectedSubjectConfig = allClassSubjects.find(s => s.key === selectedSubjectKey)!;
+  const currentMax = getExamMaxMarks(examType, selectedSubjectConfig);
 
-  const currentMax = subjectMaxMarks[selectedSubject] || initialMaxMarks;
+  const [localMarks, setLocalMarks] = useState<{ [studentId: string]: number }>({});
+  const [errors, setErrors] = useState<{ [studentId: string]: string }>({});
 
   useEffect(() => {
     const initialMarks: { [id: string]: number } = {};
+    const markKey = getMarkKey(examType, selectedSubjectKey);
     students.forEach(s => {
-      initialMarks[s.id] = s.marks[selectedSubject] || 0;
+      initialMarks[s.id] = s.marks[markKey] || 0;
     });
     setLocalMarks(initialMarks);
-  }, [selectedSubject, students]);
+    setErrors({});
+  }, [selectedSubjectKey, examType, students]);
 
   const handleMarkChange = (studentId: string, value: string) => {
     const num = value === '' ? 0 : parseInt(value);
-    setLocalMarks(prev => ({ ...prev, [studentId]: isNaN(num) ? 0 : Math.min(currentMax, num) }));
-  };
+    const score = isNaN(num) ? 0 : num;
+    
+    setLocalMarks(prev => ({ ...prev, [studentId]: score }));
 
-  const handleMaxMarksChange = (val: string) => {
-    const num = parseInt(val) || 0;
-    setSubjectMaxMarks(prev => ({ ...prev, [selectedSubject]: num }));
+    if (score > currentMax) {
+      setErrors(prev => ({ ...prev, [studentId]: `Cannot exceed ${currentMax}` }));
+    } else {
+      setErrors(prev => {
+        const next = { ...prev };
+        delete next[studentId];
+        return next;
+      });
+    }
   };
 
   const handleSave = () => {
-    if (!canEditSubject(selectedSubject, classLevel)) {
+    if (!canEditSubject(selectedSubjectKey, classLevel)) {
       return alert("Access Denied: You do not have permission to edit this subject's marks.");
     }
+
+    const hasErrors = Object.keys(errors).length > 0;
+    if (hasErrors) {
+      return alert("Please correct the errors before saving.");
+    }
+
+    const markKey = getMarkKey(examType, selectedSubjectKey);
     const updated = students.map(s => ({
       ...s,
-      marks: { ...s.marks, [selectedSubject]: localMarks[s.id] || 0 }
+      marks: { ...s.marks, [markKey]: localMarks[s.id] || 0 }
     }));
     onSave(updated);
   };
 
   const handleDownloadAwardList = () => {
-    const currentLabel = allClassSubjects.find(s => s.key === selectedSubject)?.label || 'Subject';
-    exportAwardList(students, classLevel, selectedSubject, currentLabel, currentMax);
+    exportAwardList(students, classLevel, selectedSubjectKey, selectedSubjectConfig.label, currentMax);
   };
-
-  const subjectLabel = allClassSubjects.find(s => s.key === selectedSubject)?.label || '';
 
   return (
     <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-300">
@@ -84,10 +101,23 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({ classLevel, student
         
         <div className="flex flex-wrap items-center gap-4 bg-white/10 p-3 rounded-xl backdrop-blur-sm">
           <div className="flex flex-col">
+            <label className="text-[10px] font-black uppercase mb-1 text-indigo-200">Exam Type</label>
+            <select 
+              value={examType} 
+              onChange={(e) => onExamTypeChange(e.target.value as ExamType)}
+              className="bg-white text-slate-900 px-3 py-1.5 rounded-lg text-sm font-bold outline-none ring-2 ring-transparent focus:ring-indigo-300"
+            >
+              {Object.values(ExamType).map(type => (
+                <option key={type} value={type}>{type}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col">
             <label className="text-[10px] font-black uppercase mb-1 text-indigo-200">Select Subject</label>
             <select 
-              value={selectedSubject} 
-              onChange={(e) => setSelectedSubject(e.target.value as keyof StudentMarks)}
+              value={selectedSubjectKey} 
+              onChange={(e) => setSelectedSubjectKey(e.target.value as keyof StudentMarks)}
               className="bg-white text-slate-900 px-3 py-1.5 rounded-lg text-sm font-bold outline-none ring-2 ring-transparent focus:ring-indigo-300"
             >
               {editableSubjects.map(sub => (
@@ -99,13 +129,8 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({ classLevel, student
 
           <div className="flex flex-col">
             <label className="text-[10px] font-black uppercase mb-1 text-indigo-200">Max Marks</label>
-            <div className="flex items-center space-x-1">
-              <input 
-                type="number"
-                value={currentMax}
-                onChange={(e) => handleMaxMarksChange(e.target.value)}
-                className="w-20 bg-white text-slate-900 px-3 py-1.5 rounded-lg text-sm font-bold outline-none"
-              />
+            <div className="bg-white/20 px-4 py-1.5 rounded-lg text-sm font-black text-white border border-white/30">
+              {currentMax}
             </div>
           </div>
         </div>
@@ -124,7 +149,7 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({ classLevel, student
               <tr>
                 <th className="px-8 py-4">Roll No</th>
                 <th className="px-8 py-4">Student Name</th>
-                <th className="px-8 py-4 text-center w-40">Entry (/{currentMax})</th>
+                <th className="px-8 py-4 text-center w-48">Entry (/{currentMax})</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -135,13 +160,20 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({ classLevel, student
                   <tr key={student.id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'} hover:bg-indigo-50/50 transition-colors`}>
                     <td className="px-8 py-4 font-black text-slate-500">{student.rollNo}</td>
                     <td className="px-8 py-4 font-bold text-slate-800">{student.name}</td>
-                    <td className="px-8 py-4 flex justify-center">
-                      <input 
-                        type="number"
-                        value={localMarks[student.id] ?? ''}
-                        onChange={(e) => handleMarkChange(student.id, e.target.value)}
-                        className="w-full p-2 text-center border-2 border-slate-200 rounded-xl focus:border-indigo-500 outline-none font-black text-indigo-700 shadow-sm"
-                      />
+                    <td className="px-8 py-4">
+                      <div className="flex flex-col items-center">
+                        <input 
+                          type="number"
+                          value={localMarks[student.id] ?? ''}
+                          onChange={(e) => handleMarkChange(student.id, e.target.value)}
+                          className={`w-full max-w-[120px] p-2 text-center border-2 rounded-xl outline-none font-black shadow-sm transition-all ${
+                            errors[student.id] ? 'border-red-500 bg-red-50 text-red-600' : 'border-slate-200 bg-white text-indigo-700 focus:border-indigo-500'
+                          }`}
+                        />
+                        {errors[student.id] && (
+                          <span className="text-[10px] font-bold text-red-500 mt-1 uppercase">{errors[student.id]}</span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
