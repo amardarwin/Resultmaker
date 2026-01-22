@@ -18,7 +18,7 @@ export interface User {
   name: string;
   role: Role;
   assignedClass?: ClassLevel;
-  teachingAssignments?: TeachingAssignment[]; // Replaced assignedSubjects
+  teachingAssignments?: TeachingAssignment[];
   rollNo?: string;
 }
 
@@ -79,4 +79,23 @@ export interface ColumnMapping {
   rollNo: string;
   name: string;
   subjectMapping: Record<string, string>;
+}
+
+// NEW TYPES FOR AUTOMATION SYSTEM
+export type AttendanceStatus = 'P' | 'A' | 'L';
+
+export interface AttendanceRecord {
+  date: string;
+  classLevel: ClassLevel;
+  records: Record<string, AttendanceStatus>; // rollNo -> status
+}
+
+export interface HomeworkTask {
+  id: string;
+  classLevel: ClassLevel;
+  subject: keyof StudentMarks;
+  taskName: string;
+  date: string;
+  status: 'Assigned' | 'Checking' | 'Completed';
+  nonSubmitters: string[]; // array of roll numbers
 }
