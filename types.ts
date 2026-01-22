@@ -1,109 +1,40 @@
-export type ClassLevel = '6' | '7' | '8' | '9' | '10';
+// FILE: types.ts
 
-export enum Role {
-  ADMIN = 'ADMIN',
-  CLASS_INCHARGE = 'CLASS_INCHARGE',
-  SUBJECT_TEACHER = 'SUBJECT_TEACHER',
-  STUDENT = 'STUDENT'
-}
+export interface Student {
+  id: number;
+  rollNo: string;
+  name: string;
+  fatherName: string;
+  motherName?: string;
+  category?: string;
+  dob?: string;
+  className?: string; 
+  class?: string;
 
-export enum ExamType {
-  BIMONTHLY = 'Bimonthly',
-  TERM = 'Term',
-  PREBOARD = 'Preboard',
-  FINAL = 'Final'
-}
+  // Subjects (Purane Wale)
+  pbi?: string | number;
+  math?: string | number;
+  sci?: string | number;
+  sst?: string | number;
+  eng?: string | number;
+  hindi?: string | number;
 
-export interface TeachingAssignment {
-  classLevel: ClassLevel;
-  subjects: (keyof StudentMarks)[];
+  // Grading Subjects
+  comp?: string | number;
+  phy_edu?: string | number;
+  drawing?: string | number;
+  agri?: string | number;
+  welcome_life?: string | number;
+
+  // ✨ MAGIC LINE (Yeh line error hatayegi)
+  // Iska matlab hai: "Koi bhi naya subject ya exam type (jaise bimonthly_math) aane do, roko mat."
+  [key: string]: any;
 }
 
 export interface User {
-  id: string;
   username: string;
+  role: 'ADMIN' | 'CLASS_INCHARGE' | 'SUBJECT_TEACHER' | 'STUDENT';
   name: string;
-  role: Role;
-  assignedClass?: ClassLevel;
-  teachingAssignments?: TeachingAssignment[];
-  rollNo?: string;
-}
-
-export interface StaffUser extends User {
-  password?: string;
-}
-
-export interface SchoolConfig {
-  schoolName: string;
-  adminName: string;
-  adminPassword?: string;
-  isSetup: boolean;
-}
-
-export interface StudentMarks {
-  [key: string]: number | undefined;
-  pbi?: number;
-  pbi_a?: number;
-  pbi_b?: number;
-  hindi: number;
-  eng: number;
-  math: number;
-  sci: number;
-  sst: number;
-  comp: number;
-  phy_edu: number;
-  agri?: number;
-}
-
-export interface Student {
-  id: string;
-  rollNo: string;
-  name: string;
-  fatherName?: string;
-  classLevel: ClassLevel;
-  marks: Record<string, number>;
-  manualTotal?: number;
-  password?: string;
-}
-
-export interface CalculatedResult extends Student {
-  total: number;
-  percentage: number;
-  rank: number;
-  status: 'Pass' | 'Fail';
-}
-
-export enum SubjectType {
-  MAIN = 'MAIN',
-  GRADING = 'GRADING'
-}
-
-export interface SubjectConfig {
-  key: keyof StudentMarks;
-  label: string;
-  type: SubjectType;
-}
-
-export interface ColumnMapping {
-  rollNo: string;
-  name: string;
-  subjectMapping: Record<string, string>;
-}
-
-export type AttendanceStatus = 'P' | 'A' | 'L';
-
-export interface AttendanceRecord {
-  date: string;
-  classLevel: ClassLevel;
-  records: Record<string, AttendanceStatus>; // rollNo -> status
-}
-
-export interface HomeworkTask {
-  id: string;
-  classLevel: ClassLevel;
-  subject: keyof StudentMarks;
-  taskName: string;
-  date: string;
-  status: 'Assigned' | 'Checking' | 'Completed';
-  nonSubmitters: string[]; // array of roll numbers
+  assignedClass?: string;
+  teachingAssignments?: { class: string, subjects: string[] }[];
 }
