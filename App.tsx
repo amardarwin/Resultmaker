@@ -79,7 +79,7 @@ const AppContent: React.FC = () => {
       const otherClasses = prev.filter(s => s.classLevel !== activeClass);
       return [...otherClasses, ...updatedStudents];
     });
-    setView('sheet');
+    // Keep user in the entry portal if they were there, or navigate back based on UX
   };
 
   const handleDelete = (id: string) => {
@@ -119,7 +119,6 @@ const AppContent: React.FC = () => {
           if (['roll no', 'roll', 'id', 'sr no'].includes(lh)) initialMap.rollNo = h;
           if (['name', 'student', 'student name'].includes(lh)) initialMap.name = h;
           subjects.forEach(s => {
-            // Fix: Cast subject key to string for lowercase comparison and record assignment to avoid index signature issues
             const subjectKeyStr = s.key as string;
             if (s.label.toLowerCase() === lh || subjectKeyStr.toLowerCase() === lh) {
               initialMap.subjectMapping[subjectKeyStr] = h;
@@ -223,9 +222,10 @@ const AppContent: React.FC = () => {
         return (
           <SubjectEntryForm 
             classLevel={activeClass} 
+            onClassChange={setActiveClass}
             students={students.filter(s => s.classLevel === activeClass)} 
             onSave={handleBulkUpdate} 
-            onCancel={() => setView('sheet')} 
+            onCancel={() => setView('dashboard')} 
             examType={activeExamType}
             onExamTypeChange={setActiveExamType}
           />
