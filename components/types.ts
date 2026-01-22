@@ -15,12 +15,14 @@ export interface TeachingAssignment {
 export interface User {
   id: string;
   username: string;
-  name: string;
+   name: string;
   role: Role;
   assignedClass?: ClassLevel;
+  teachingAssignments?: TeachingAssignment[]; // Replaced assignedSubjects
   teachingAssignments?: TeachingAssignment[];
   rollNo?: string;
 }
+
 
 export interface StaffUser extends User {
   password?: string;
@@ -74,9 +76,7 @@ export interface SubjectConfig {
   label: string;
   type: SubjectType;
 }
-
-export interface ColumnMapping {
-  rollNo: string;
+rollNo: string;
   name: string;
   subjectMapping: Record<string, string>;
 }
@@ -97,5 +97,7 @@ export interface HomeworkTask {
   taskName: string;
   date: string;
   status: 'Assigned' | 'Checking' | 'Completed';
+  nonSubmitters: string[]; // array of roll numbers
+}
   nonSubmitters: string[]; // array of roll numbers
 }
