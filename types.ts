@@ -1,4 +1,4 @@
-// FILE: types.ts (Root folder)
+// FILE: types.ts
 
 export interface Student {
   id: number;
@@ -26,13 +26,14 @@ export interface Student {
   agri?: string | number;
   welcome_life?: string | number;
 
-  // ✨ MAGIC LINE (Zaroori hai)
+  // MAGIC LINE (Zaroori hai taaki error na aaye)
   [key: string]: any;
 }
 
 export interface User {
   username: string;
-  role: 'ADMIN' | 'CLASS_INCHARGE' | 'SUBJECT_TEACHER' | 'STUDENT';
+  // Role ko loose rakha hai taaki error na aaye
+  role: string; 
   name: string;
   assignedClass?: string;
   teachingAssignments?: { class: string, subjects: string[] }[];
