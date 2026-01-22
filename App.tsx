@@ -119,7 +119,11 @@ const AppContent: React.FC = () => {
           if (['roll no', 'roll', 'id', 'sr no'].includes(lh)) initialMap.rollNo = h;
           if (['name', 'student', 'student name'].includes(lh)) initialMap.name = h;
           subjects.forEach(s => {
-            if (s.label.toLowerCase() === lh || s.key.toLowerCase() === lh) initialMap.subjectMapping[s.key] = h;
+            // Fix: Cast subject key to string for lowercase comparison and record assignment to avoid index signature issues
+            const subjectKeyStr = s.key as string;
+            if (s.label.toLowerCase() === lh || subjectKeyStr.toLowerCase() === lh) {
+              initialMap.subjectMapping[subjectKeyStr] = h;
+            }
           });
         });
         setMapping(initialMap);

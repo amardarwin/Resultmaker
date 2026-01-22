@@ -1,4 +1,12 @@
-import { ExamType, SubjectType, SubjectConfig } from '../types';
+import { ExamType, SubjectType, SubjectConfig, StudentMarks } from '../types';
+
+/**
+ * Generates a unique key for marks storage based on exam type and subject key.
+ * Update getMarkKey to handle keyof StudentMarks which can be string | number due to index signature.
+ */
+export const getMarkKey = (examType: ExamType, subjectKey: keyof StudentMarks | string): string => {
+  return `${examType}_${String(subjectKey)}`;
+};
 
 export const getExamMaxMarks = (examType: ExamType, subject: SubjectConfig): number => {
   // Grading subjects logic
@@ -21,8 +29,4 @@ export const getExamMaxMarks = (examType: ExamType, subject: SubjectConfig): num
     default:
       return 100;
   }
-};
-
-export const getMarkKey = (examType: ExamType, subjectKey: string): string => {
-  return `${examType}_${subjectKey}`;
 };

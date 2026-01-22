@@ -66,14 +66,14 @@ const Dashboard: React.FC<DashboardProps> = ({
   };
 
   const bands = getPerformanceBands(results);
-  // Fix: Pass examType to stats utility functions
   const subjectStats = calculateSubjectStats(results, className, examType);
   const compStats = getComparativeSubjectStats(allStudents, comparativeSubject, examType);
 
   const allAvailableSubjects = useMemo(() => {
     const set = new Set<string>();
     ALL_CLASSES.forEach(cls => {
-      GET_SUBJECTS_FOR_CLASS(cls).forEach(s => set.add(s.key));
+      // Fix: Cast key to string when adding to Set to ensure allAvailableSubjects is string[]
+      GET_SUBJECTS_FOR_CLASS(cls).forEach(s => set.add(s.key as string));
     });
     return Array.from(set);
   }, []);
@@ -164,8 +164,8 @@ const Dashboard: React.FC<DashboardProps> = ({
            </div>
            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
              {subjectStats.map(sub => {
-               // Fix: Calculate max marks and mark key based on examType
                const maxMarks = getExamMaxMarks(examType, sub as any);
+               // sub.key is keyof StudentMarks, now supported by getMarkKey
                const mKey = getMarkKey(examType, sub.key);
                const atRiskCount = results.filter(r => ((r.marks[mKey] || 0) / maxMarks) * 100 < 40).length;
                const isSelected = activeFilters.subject === sub.key;

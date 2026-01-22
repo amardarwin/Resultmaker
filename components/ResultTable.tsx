@@ -45,7 +45,8 @@ const ResultTable: React.FC<ResultTableProps> = ({
     if (activeFilters.subject) {
       const subConfig = subjects.find(s => s.key === activeFilters.subject)!;
       const maxMarks = getExamMaxMarks(examType, subConfig);
-      const mKey = getMarkKey(examType, activeFilters.subject as string);
+      // activeFilters.subject is keyof StudentMarks, getMarkKey now supports it
+      const mKey = getMarkKey(examType, activeFilters.subject);
       list = list.filter(r => ((r.marks[mKey] || 0) / maxMarks) * 100 < 40);
     }
 
@@ -123,7 +124,8 @@ const ResultTable: React.FC<ResultTableProps> = ({
               <div className="flex flex-col">
                 <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Active Filter</span>
                 <span className="text-[10px] font-black text-indigo-600 uppercase">
-                  {activeFilters.subject && `At-risk in ${activeFilters.subject.toUpperCase()}`}
+                  {/* Fix: Safely convert subject to string before using toUpperCase() */}
+                  {activeFilters.subject && `At-risk in ${String(activeFilters.subject).toUpperCase()}`}
                   {activeFilters.subject && activeFilters.band && ' + '}
                   {activeFilters.band && `Band: ${activeFilters.band}`}
                 </span>
@@ -219,6 +221,7 @@ const ResultTable: React.FC<ResultTableProps> = ({
                       </td>
                       
                       {subjects.map(sub => {
+                        // sub.key is keyof StudentMarks, getMarkKey now supports it
                         const mKey = getMarkKey(examType, sub.key);
                         const score = res.marks[mKey] ?? 0;
                         const maxMarks = getExamMaxMarks(examType, sub);

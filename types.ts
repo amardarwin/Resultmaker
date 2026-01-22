@@ -41,7 +41,6 @@ export interface SchoolConfig {
 }
 
 export interface StudentMarks {
-  // Add index signature for dynamic access
   [key: string]: number | undefined;
   pbi?: number;
   pbi_a?: number;
@@ -60,8 +59,8 @@ export interface Student {
   id: string;
   rollNo: string;
   name: string;
+  fatherName?: string;
   classLevel: ClassLevel;
-  // Format: "examType_subjectKey" -> score
   marks: Record<string, number>;
   manualTotal?: number;
   password?: string;
