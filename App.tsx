@@ -1,18 +1,20 @@
-// FILE: App.tsx (Root)
+// FILE: App.tsx (Safe Mode)
 
 import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import SubjectEntryForm from './components/SubjectEntryForm';
 import StudentForm from './components/StudentForm';
-import LoginScreen from './components/LoginScreen';
-import SchoolSetup from './components/SchoolSetup';
-import StaffManagement from './components/StaffManagement';
-import AttendanceManager from './components/AttendanceManager';
-import HomeworkTracker from './components/HomeworkTracker';
-import ResultTable from './components/ResultTable'; // Import ResultTable
 
-// Simple Types to prevent errors
+// 🛑 ABHI KE LIYE INKO BAND KAR RAHE HAIN (Taaki Error na aaye)
+// import LoginScreen from './components/LoginScreen';
+// import SchoolSetup from './components/SchoolSetup';
+// import StaffManagement from './components/StaffManagement';
+// import AttendanceManager from './components/AttendanceManager';
+// import HomeworkTracker from './components/HomeworkTracker';
+// import ResultTable from './components/ResultTable';
+
+// Simple User Type
 interface User {
   username: string;
   role: string;
@@ -26,45 +28,27 @@ function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
-  // Load User from LocalStorage on start
+  // Load User
   useEffect(() => {
     const savedUser = localStorage.getItem('currentUser');
     if (savedUser) {
-      try {
-        setUser(JSON.parse(savedUser));
-      } catch (e) {
-        console.error("User load error", e);
-      }
+      try { setUser(JSON.parse(savedUser)); } catch (e) { console.error(e); }
+    } else {
+      // Auto-Login as Admin for Testing (Kyunki LoginScreen band hai)
+      setUser({ name: 'Amarjeet Singh', role: 'ADMIN', username: 'admin' });
     }
   }, []);
 
-  // Login Handler
-  const handleLogin = (userData: User) => {
-    setUser(userData);
-    localStorage.setItem('currentUser', JSON.stringify(userData));
-  };
-
-  // Logout Handler
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem('currentUser');
-    setActiveTab('dashboard');
+    window.location.reload(); // Reload to reset
   };
 
-  // Main Render Logic
-  if (!user) {
-    return <LoginScreen onLogin={handleLogin} />;
-  }
-
-  // School Setup Check (First Time)
-  const isSchoolSetup = localStorage.getItem('school_setup_complete');
-  if (!isSchoolSetup && user.role === 'ADMIN') {
-    return <SchoolSetup onComplete={() => window.location.reload()} />;
-  }
+  if (!user) return <div className="p-10 text-center">Loading System...</div>;
 
   return (
     <div className="flex h-screen bg-gray-100 font-sans">
-      {/* Sidebar */}
       <Sidebar 
         user={user} 
         activeTab={activeTab} 
@@ -73,35 +57,28 @@ function App() {
         onLogout={handleLogout}
       />
 
-      {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        
-        {/* Top Header for Mobile Menu Toggle */}
+        {/* Mobile Header */}
         <header className="bg-white shadow-sm p-4 flex items-center md:hidden">
-          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-gray-600">
-            ☰ Menu
-          </button>
+          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-gray-600">☰</button>
         </header>
 
         <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-4 md:p-6">
           
-          {/* CONTENT SWITCHER */}
+          {/* ✅ SIRF WORKING COMPONENTS CHALENGE */}
           {activeTab === 'dashboard' && <Dashboard user={user} />}
-          
-          {/* ✅ Fixed: Passing currentUser correctly */}
           {activeTab === 'entry' && <SubjectEntryForm currentUser={user} />}
-          
-          {/* ✅ Fixed: Handling Back Button */}
           {activeTab === 'enrollment' && <StudentForm onBack={() => setActiveTab('dashboard')} />}
-          
-          {activeTab === 'staff' && <StaffManagement />}
-          
-          {activeTab === 'attendance' && <AttendanceManager user={user} />}
-          
-          {activeTab === 'homework' && <HomeworkTracker user={user} />}
 
-          {/* Result Sheet View */}
-           {activeTab === 'result_sheet' && <ResultTable />}
+          {/* 🚧 Maintenance Message for others */}
+          {['staff', 'attendance', 'homework', 'result_sheet'].includes(activeTab) && (
+            <div className="p-10 text-center bg-white rounded-xl shadow border-l-4 border-yellow-500">
+              <h2 className="text-2xl font-bold text-gray-800">🚧 Under Maintenance</h2>
+              <p className="text-gray-600 mt-2">
+                This feature ({activeTab.toUpperCase()}) is being updated. Please check back in 5 minutes.
+              </p>
+            </div>
+          )}
            
         </main>
       </div>
