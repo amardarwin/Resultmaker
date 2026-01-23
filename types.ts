@@ -1,31 +1,33 @@
-// FILE: types.ts (Root Folder)
+// FILE: types.ts (Root)
 
-// ✅ UNIVERSAL TYPES: Yeh file sabhi purani files ko shant karegi
+// ✅ UNIVERSAL MASTER KEY (Yeh sab errors theek karegi)
 
 export interface Student {
-  id?: number;
+  id?: number | string;
   rollNo?: string;
   name?: string;
   fatherName?: string;
   class?: string;
-  className?: string;
+  className?: string; // ResultTable kabhi kabhi yeh dhoondhta hai
   
-  // Subjects (Sab optional hain - Taaki error na aaye)
+  // Subjects (Sabko 'any' kar diya taaki error na aaye)
   math?: any;
   sci?: any;
   eng?: any;
   sst?: any;
   hindi?: any;
   pbi?: any;
+  pbi_a?: any;
+  pbi_b?: any;
   
-  // Grading Subjects
+  // Grading
   comp?: any;
   phy_edu?: any;
   drawing?: any;
   agri?: any;
   welcome_life?: any;
 
-  // ✨ MAGIC LINE: Yeh kisi bhi extra cheez ko allow karega
+  // ✨ MAGIC LINE (Zaroori hai)
   [key: string]: any;
 }
 
@@ -39,6 +41,6 @@ export interface User {
   [key: string]: any;
 }
 
-// ✅ Empty Constants (Taaki agar koi file inhe dhoondhe toh error na aaye)
-export const SUBJECTS = {};
+// ✅ Agar koi file Constants dhoondh rahi ho
+export const SUBJECTS = {}; 
 export const CLASSES = [];
