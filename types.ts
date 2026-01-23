@@ -1,6 +1,6 @@
-// FILE: types.ts (Root)
+// FILE: types.ts (Root Folder)
 
-// ✅ UNIVERSAL TYPES: Yeh code kisi bhi file ko fail nahi hone dega
+// ✅ UNIVERSAL TYPES: Yeh file sabhi purani files ko shant karegi
 
 export interface Student {
   id?: number;
@@ -10,7 +10,7 @@ export interface Student {
   class?: string;
   className?: string;
   
-  // Subjects (Sab optional hain)
+  // Subjects (Sab optional hain - Taaki error na aaye)
   math?: any;
   sci?: any;
   eng?: any;
@@ -18,8 +18,14 @@ export interface Student {
   hindi?: any;
   pbi?: any;
   
-  // ✨ MAGIC LINE: (Sabse Zaroori)
-  // Yeh kisi bhi extra cheez ko allow karega
+  // Grading Subjects
+  comp?: any;
+  phy_edu?: any;
+  drawing?: any;
+  agri?: any;
+  welcome_life?: any;
+
+  // ✨ MAGIC LINE: Yeh kisi bhi extra cheez ko allow karega
   [key: string]: any;
 }
 
