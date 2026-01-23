@@ -1,21 +1,23 @@
 // FILE: src/components/SubjectEntryForm.tsx
 
 import React, { useState, useEffect } from 'react';
-// Hum koi external types import nahi karenge, khud ke rules use karenge (Safe Mode)
+
+// 🛑 Hum yahan koi import nahi karenge taaki Path ka Error na aaye.
+// Hum Types yahin define kar denge.
 
 interface Props {
-  currentUser: any; // 'any' lagaya taaki build fail na ho
+  currentUser: any; // 'any' ka matlab: Jo bhi aa raha hai, aane do (Build Pass Karo)
 }
 
 const SubjectEntryForm: React.FC<Props> = ({ currentUser }) => {
-  // Safe Defaults
-  const userClass = currentUser?.assignedClass || '10th';
+  // Safe Defaults (Agar data null hua toh crash nahi karega)
+  const defaultClass = currentUser?.assignedClass || '10th';
   const userRole = currentUser?.role || 'SUBJECT_TEACHER';
 
-  const [selectedClass, setSelectedClass] = useState<string>(userClass);
+  const [selectedClass, setSelectedClass] = useState<string>(defaultClass);
   const [selectedSubject, setSelectedSubject] = useState<string>('math');
   const [examType, setExamType] = useState<string>('bimonthly');
-  const [students, setStudents] = useState<any[]>([]);
+  const [students, setStudents] = useState<any[]>([]); // 'any' array for safety
   const [maxMarks, setMaxMarks] = useState<number>(20);
 
   // 1. Load Data
@@ -24,13 +26,13 @@ const SubjectEntryForm: React.FC<Props> = ({ currentUser }) => {
     if (savedData) {
       try {
         const allStudents = JSON.parse(savedData);
-        // Filter logic jo crash nahi karega
+        // Robust Filtering
         const classStudents = allStudents.filter((s: any) => 
           (s.class === selectedClass) || (s.className === selectedClass)
         );
         setStudents(classStudents);
       } catch (e) {
-        console.error("Data error", e);
+        console.error("Data Load Error", e);
       }
     }
   }, [selectedClass]);
@@ -82,8 +84,8 @@ const SubjectEntryForm: React.FC<Props> = ({ currentUser }) => {
   };
 
   return (
-    <div className="p-4 bg-gray-50 min-h-screen">
-      <div className="bg-white p-6 rounded-xl shadow-md border-t-4 border-indigo-600 mb-6">
+    <div className="p-4 md:p-6 bg-gray-50 min-h-screen">
+      <div className="bg-white p-4 md:p-6 rounded-xl shadow-md border-t-4 border-indigo-600 mb-6">
         <h2 className="text-2xl font-bold text-gray-800 mb-4">📝 Assessment Entry Portal</h2>
         
         {/* Controls */}
@@ -145,7 +147,7 @@ const SubjectEntryForm: React.FC<Props> = ({ currentUser }) => {
 
           {/* Max Marks */}
           <div className="flex items-end pb-2">
-            <span className="bg-indigo-100 text-indigo-800 px-4 py-2 rounded-full text-sm font-bold w-full text-center">
+            <span className="bg-indigo-100 text-indigo-800 px-4 py-2 rounded-full text-sm font-bold w-full text-center border border-indigo-200">
               Max Marks: {maxMarks}
             </span>
           </div>
@@ -159,7 +161,7 @@ const SubjectEntryForm: React.FC<Props> = ({ currentUser }) => {
             <tr className="bg-gray-100 text-gray-600 text-sm uppercase tracking-wider">
               <th className="p-4 border-b">Roll No</th>
               <th className="p-4 border-b">Name</th>
-              <th className="p-4 border-b">Marks</th>
+              <th className="p-4 border-b w-40">Marks</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -169,14 +171,17 @@ const SubjectEntryForm: React.FC<Props> = ({ currentUser }) => {
                 const val = student[key] || ''; 
                 return (
                   <tr key={student.rollNo} className="hover:bg-indigo-50">
-                    <td className="p-4 font-medium">{student.rollNo}</td>
-                    <td className="p-4 font-semibold">{student.name}</td>
+                    <td className="p-4 font-medium text-gray-700">{student.rollNo}</td>
+                    <td className="p-4 font-semibold text-gray-800">{student.name}</td>
                     <td className="p-4">
                       <input
                         type="number"
+                        min="0"
+                        max={maxMarks}
                         value={val}
                         onChange={(e) => handleMarkChange(student.rollNo, e.target.value)}
-                        className={`w-24 p-2 border rounded-md text-center font-bold ${parseFloat(val) > maxMarks ? 'bg-red-100 border-red-500' : ''}`}
+                        className={`w-full p-2 border rounded-md text-center font-bold text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 
+                          ${val !== '' && parseFloat(val) > maxMarks ? 'border-red-500 bg-red-50 text-red-600' : 'border-gray-300'}`}
                         placeholder="--"
                       />
                     </td>
@@ -184,7 +189,11 @@ const SubjectEntryForm: React.FC<Props> = ({ currentUser }) => {
                 );
               })
             ) : (
-              <tr><td colSpan={3} className="p-8 text-center text-gray-500">No students found.</td></tr>
+              <tr>
+                <td colSpan={3} className="p-8 text-center text-gray-500">
+                  No students found in {selectedClass}.
+                </td>
+              </tr>
             )}
           </tbody>
         </table>
