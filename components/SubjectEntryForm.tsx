@@ -116,6 +116,37 @@ const SubjectEntryForm: React.FC<any> = ({
     alert(`✅ Success: Registry updated for ${selectedExam} - ${selectedSubKey.toUpperCase()}.`);
   };
 
+  // 4. Download Award List (New Requirement)
+  const handleDownloadAwardList = () => {
+    if (students.length === 0) {
+      alert("No student data available to download.");
+      return;
+    }
+
+    const headers = ['Roll No', 'Student Name', 'Marks Obtained'];
+    const rows = students.map((s: any) => [
+      s.rollNo,
+      `"${s.name.replace(/"/g, '""')}"`,
+      localMarks[s.id] || '0'
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    const examSlug = selectedExam.replace(/\s+/g, '_');
+    link.setAttribute('download', `AwardList_${classLevel}_${selectedSubKey}_${examSlug}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="bg-white rounded-[40px] shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-500">
       {/* HEADER CONTROLS */}
@@ -231,16 +262,25 @@ const SubjectEntryForm: React.FC<any> = ({
              <span className="text-sm font-black text-slate-800">{students.length} Records Loaded</span>
            </div>
         </div>
-        <div className="flex items-center gap-4 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-4 w-full sm:w-auto">
           <button 
             onClick={onCancel} 
-            className="flex-1 px-10 py-5 text-[11px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-700 transition-colors"
+            className="px-6 py-5 text-[11px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-700 transition-colors"
           >
             Cancel
           </button>
+          
+          <button 
+            onClick={handleDownloadAwardList} 
+            className="px-8 py-5 bg-emerald-600 text-white font-black rounded-3xl text-[11px] uppercase tracking-widest shadow-2xl shadow-emerald-100 hover:bg-emerald-700 hover:-translate-y-1 transition-all flex items-center gap-2"
+          >
+            <i className="fa-solid fa-file-csv"></i>
+            Award List
+          </button>
+
           <button 
             onClick={handleCommit} 
-            className="flex-1 px-16 py-5 bg-indigo-600 text-white font-black rounded-3xl text-[11px] uppercase tracking-widest shadow-2xl shadow-indigo-100 hover:bg-slate-950 hover:-translate-y-1 transition-all"
+            className="px-12 py-5 bg-indigo-600 text-white font-black rounded-3xl text-[11px] uppercase tracking-widest shadow-2xl shadow-indigo-100 hover:bg-slate-950 hover:-translate-y-1 transition-all"
           >
             Save Registry
           </button>
