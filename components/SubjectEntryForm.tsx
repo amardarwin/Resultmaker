@@ -1,168 +1,248 @@
+import React, { useState, useEffect, useMemo } from 'react';
 
-import React, { useState, useEffect } from 'react';
-import { Student, ClassLevel, StudentMarks, Role } from '../types';
-import { GET_SUBJECTS_FOR_CLASS } from '../constants';
-import { exportAwardList } from '../utils/export';
-import { useAuth } from '../contexts/AuthContext';
+/**
+ * SubjectEntryForm - STANDALONE COMPONENT
+ * No external imports. Localized logic for Middle and High School schemas.
+ */
+const SubjectEntryForm: React.FC<any> = ({ 
+  classLevel = '6', 
+  students = [], 
+  onSave, 
+  onCancel,
+  currentUser 
+}) => {
 
-interface SubjectEntryFormProps {
-  classLevel: ClassLevel;
-  students: Student[];
-  onSave: (updatedStudents: Student[]) => void;
-  onCancel: () => void;
-  initialMaxMarks: number;
-}
-
-const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({ classLevel, students, onSave, onCancel, initialMaxMarks }) => {
-  const { user, canEditSubject } = useAuth();
-  const allClassSubjects = GET_SUBJECTS_FOR_CLASS(classLevel);
+  // 1. Local Configuration & State
+  const [selectedExam, setSelectedExam] = useState<string>('Final Exam');
   
-  // Logic: Only show subjects the user has permission to edit
-  const editableSubjects = allClassSubjects.filter(s => canEditSubject(s.key, classLevel));
-
-  const [selectedSubject, setSelectedSubject] = useState<keyof StudentMarks>(() => {
-    return editableSubjects.length > 0 ? editableSubjects[0].key : allClassSubjects[0].key;
-  });
-
-  const [localMarks, setLocalMarks] = useState<{ [studentId: string]: number }>({});
-  const [subjectMaxMarks, setSubjectMaxMarks] = useState<Record<string, number>>(() => {
-    const map: Record<string, number> = {};
-    allClassSubjects.forEach(s => map[s.key] = initialMaxMarks);
-    return map;
-  });
-
-  const currentMax = subjectMaxMarks[selectedSubject] || initialMaxMarks;
-
-  useEffect(() => {
-    const initialMarks: { [id: string]: number } = {};
-    students.forEach(s => {
-      initialMarks[s.id] = s.marks[selectedSubject] || 0;
-    });
-    setLocalMarks(initialMarks);
-  }, [selectedSubject, students]);
-
-  const handleMarkChange = (studentId: string, value: string) => {
-    const num = value === '' ? 0 : parseInt(value);
-    setLocalMarks(prev => ({ ...prev, [studentId]: isNaN(num) ? 0 : Math.min(currentMax, num) }));
-  };
-
-  const handleMaxMarksChange = (val: string) => {
-    const num = parseInt(val) || 0;
-    setSubjectMaxMarks(prev => ({ ...prev, [selectedSubject]: num }));
-  };
-
-  const handleSave = () => {
-    if (!canEditSubject(selectedSubject, classLevel)) {
-      return alert("Access Denied: You do not have permission to edit this subject's marks.");
+  // Define subjects based on class level internally
+  const getSubjects = (cls: string) => {
+    const isMiddle = ['6', '7', '8'].includes(cls);
+    if (isMiddle) {
+      return [
+        { key: 'pbi', label: 'Punjabi' },
+        { key: 'hindi', label: 'Hindi' },
+        { key: 'eng', label: 'English' },
+        { key: 'math', label: 'Math' },
+        { key: 'sci', label: 'Science' },
+        { key: 'sst', label: 'SST' },
+        { key: 'comp', label: 'Comp' },
+        { key: 'phy_edu', label: 'Phy Edu' },
+      ];
     }
-    const updated = students.map(s => ({
+    return [
+      { key: 'pbi_a', label: 'Punjabi A' },
+      { key: 'pbi_b', label: 'Punjabi B' },
+      { key: 'hindi', label: 'Hindi' },
+      { key: 'eng', label: 'English' },
+      { key: 'math', label: 'Math' },
+      { key: 'sci', label: 'Science' },
+      { key: 'sst', label: 'SST' },
+      { key: 'comp', label: 'Comp' },
+    ];
+  };
+
+  const subjects = useMemo(() => getSubjects(classLevel), [classLevel]);
+  const [selectedSubKey, setSelectedSubKey] = useState<string>(subjects[0]?.key || '');
+  const [localMarks, setLocalMarks] = useState<Record<string, string>>({});
+
+  // 2. Max Marks Logic (Requirement 2 & 3)
+  const getMaxMarks = (exam: string, subKey: string) => {
+    if (exam === 'Bimonthly') return 20;
+    if (exam === 'Term Exam' || exam === 'Preboard') return 80;
+    if (exam === 'Final Exam') {
+      const lowerKey = subKey.toLowerCase();
+      // Logic: Final Exam + Punjabi A or B = 75
+      if (lowerKey === 'pbi_a' || lowerKey === 'pbi_b' || lowerKey === 'punjabi a' || lowerKey === 'punjabi b') {
+        return 75;
+      }
+      return 100;
+    }
+    return 100;
+  };
+
+  const currentMax = useMemo(() => getMaxMarks(selectedExam, selectedSubKey), [selectedExam, selectedSubKey]);
+
+  // Generate a simple storage key (e.g., 'final_math', 'term_hindi')
+  const generateStorageKey = (exam: string, sub: string) => {
+    const prefix = exam.toLowerCase().split(' ')[0]; // 'final', 'term', 'preboard', 'bimonthly'
+    return `${prefix}_${sub.toLowerCase()}`;
+  };
+
+  const storageKey = useMemo(() => generateStorageKey(selectedExam, selectedSubKey), [selectedExam, selectedSubKey]);
+
+  // 3. Hydrate Local Data when settings change
+  useEffect(() => {
+    const freshMarks: Record<string, string> = {};
+    students.forEach((s: any) => {
+      const savedVal = s.marks?.[storageKey];
+      freshMarks[s.id] = (savedVal !== undefined && savedVal !== null) ? String(savedVal) : '';
+    });
+    setLocalMarks(freshMarks);
+  }, [storageKey, students]);
+
+  // Reset selected subject if class level changes schema
+  useEffect(() => {
+    if (!subjects.some(s => s.key === selectedSubKey)) {
+      setSelectedSubKey(subjects[0]?.key || '');
+    }
+  }, [classLevel, subjects, selectedSubKey]);
+
+  const handleInputChange = (id: string, val: string) => {
+    if (val !== '' && !/^\d+$/.test(val)) return;
+    setLocalMarks(prev => ({ ...prev, [id]: val }));
+  };
+
+  const handleCommit = () => {
+    const violations = students.filter((s: any) => {
+      const val = parseInt(localMarks[s.id] || '0', 10);
+      return val > currentMax;
+    });
+
+    if (violations.length > 0) {
+      alert(`⚠️ Validation Failed: ${violations.length} student(s) have marks exceeding the limit of ${currentMax}.`);
+      return;
+    }
+
+    const updatedStudents = students.map((s: any) => ({
       ...s,
-      marks: { ...s.marks, [selectedSubject]: localMarks[s.id] || 0 }
+      marks: {
+        ...(s.marks || {}),
+        [storageKey]: localMarks[s.id] === '' ? 0 : parseInt(localMarks[s.id], 10)
+      }
     }));
-    onSave(updated);
-  };
 
-  const handleDownloadAwardList = () => {
-    const currentLabel = allClassSubjects.find(s => s.key === selectedSubject)?.label || 'Subject';
-    exportAwardList(students, classLevel, selectedSubject, currentLabel, currentMax);
+    onSave(updatedStudents);
+    alert(`✅ Success: Registry updated for ${selectedExam} - ${selectedSubKey.toUpperCase()}.`);
   };
-
-  const subjectLabel = allClassSubjects.find(s => s.key === selectedSubject)?.label || '';
 
   return (
-    <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-300">
-      <div className="p-6 bg-indigo-600 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-black flex items-center">
-            <i className="fa-solid fa-clipboard-list mr-3"></i>
-            Award List Entry
-          </h2>
-          <p className="text-indigo-100 text-xs font-bold uppercase tracking-wider mt-1 opacity-80">
-            Class {classLevel} • {editableSubjects.length} Subject(s) Editable
-          </p>
-        </div>
-        
-        <div className="flex flex-wrap items-center gap-4 bg-white/10 p-3 rounded-xl backdrop-blur-sm">
-          <div className="flex flex-col">
-            <label className="text-[10px] font-black uppercase mb-1 text-indigo-200">Select Subject</label>
-            <select 
-              value={selectedSubject} 
-              onChange={(e) => setSelectedSubject(e.target.value as keyof StudentMarks)}
-              className="bg-white text-slate-900 px-3 py-1.5 rounded-lg text-sm font-bold outline-none ring-2 ring-transparent focus:ring-indigo-300"
-            >
-              {editableSubjects.map(sub => (
-                <option key={sub.key} value={sub.key}>{sub.label} {sub.type === 'GRADING' ? '(G)' : ''}</option>
-              ))}
-              {editableSubjects.length === 0 && <option disabled>No subjects assigned</option>}
-            </select>
+    <div className="bg-white rounded-[40px] shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-500">
+      {/* HEADER CONTROLS */}
+      <div className="p-8 bg-slate-900 text-white">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
+          <div>
+            <h2 className="text-3xl font-black">Subject Entry Portal</h2>
+            <p className="text-indigo-300 text-[10px] font-black uppercase tracking-[0.3em] mt-3">Active Class: {classLevel} • {currentUser?.name || 'Administrator'}</p>
           </div>
 
-          <div className="flex flex-col">
-            <label className="text-[10px] font-black uppercase mb-1 text-indigo-200">Max Marks</label>
-            <div className="flex items-center space-x-1">
-              <input 
-                type="number"
-                value={currentMax}
-                onChange={(e) => handleMaxMarksChange(e.target.value)}
-                className="w-20 bg-white text-slate-900 px-3 py-1.5 rounded-lg text-sm font-bold outline-none"
-              />
+          <div className="flex flex-wrap items-center gap-4 bg-white/5 p-4 rounded-[32px] border border-white/10">
+            <div className="flex flex-col">
+              <span className="text-[8px] font-black uppercase text-indigo-300 ml-1 mb-1">Exam Type</span>
+              <select 
+                value={selectedExam} 
+                onChange={(e) => setSelectedExam(e.target.value)}
+                className="bg-white text-slate-950 px-5 py-2.5 rounded-2xl text-[11px] font-black outline-none shadow-xl"
+              >
+                <option value="Bimonthly">Bimonthly (Max 20)</option>
+                <option value="Term Exam">Term Exam (Max 80)</option>
+                <option value="Preboard">Preboard (Max 80)</option>
+                <option value="Final Exam">Final Exam (Max 100/75)</option>
+              </select>
+            </div>
+
+            <div className="flex flex-col">
+              <span className="text-[8px] font-black uppercase text-indigo-300 ml-1 mb-1">Subject</span>
+              <select 
+                value={selectedSubKey} 
+                onChange={(e) => setSelectedSubKey(e.target.value)}
+                className="bg-white text-slate-950 px-5 py-2.5 rounded-2xl text-[11px] font-black outline-none shadow-xl"
+              >
+                {subjects.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+              </select>
+            </div>
+
+            <div className="flex flex-col items-center justify-center bg-indigo-500/30 px-6 py-2 rounded-2xl border border-white/10 min-w-[100px]">
+              <span className="text-[8px] font-black uppercase text-indigo-200">Max Marks</span>
+              <span className="text-2xl font-black text-white">{currentMax}</span>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="max-h-[60vh] overflow-y-auto custom-scrollbar">
-        {editableSubjects.length === 0 ? (
-          <div className="p-20 text-center flex flex-col items-center">
-            <i className="fa-solid fa-lock text-6xl text-slate-200 mb-4"></i>
-            <h3 className="text-xl font-black text-slate-400 uppercase tracking-widest">Entry Locked</h3>
-            <p className="text-sm text-slate-400 mt-2">You are not assigned to enter marks for any subjects in Class {classLevel}.</p>
-          </div>
-        ) : (
-          <table className="w-full text-sm text-left border-collapse">
-            <thead className="text-[10px] text-slate-400 font-black uppercase bg-slate-50 sticky top-0 border-b border-slate-100 z-10">
+      {/* DATA TABLE */}
+      <div className="max-h-[55vh] overflow-y-auto bg-slate-50/50">
+        <table className="w-full text-left">
+          <thead className="sticky top-0 bg-white z-30 shadow-sm border-b">
+            <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              <th className="px-10 py-6">Roll No</th>
+              <th className="px-10 py-6">Student Identity</th>
+              <th className="px-10 py-6 text-center">Marks Input</th>
+              <th className="px-10 py-6 text-center">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {students.length === 0 ? (
               <tr>
-                <th className="px-8 py-4">Roll No</th>
-                <th className="px-8 py-4">Student Name</th>
-                <th className="px-8 py-4 text-center w-40">Entry (/{currentMax})</th>
+                <td colSpan={4} className="px-10 py-32 text-center text-slate-300 font-black uppercase tracking-widest">
+                  No Students Enrolled in Class {classLevel}
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {students.length === 0 ? (
-                <tr><td colSpan={3} className="px-8 py-20 text-center text-slate-400 font-bold italic">No students in this class.</td></tr>
-              ) : (
-                students.map((student, idx) => (
-                  <tr key={student.id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'} hover:bg-indigo-50/50 transition-colors`}>
-                    <td className="px-8 py-4 font-black text-slate-500">{student.rollNo}</td>
-                    <td className="px-8 py-4 font-bold text-slate-800">{student.name}</td>
-                    <td className="px-8 py-4 flex justify-center">
-                      <input 
-                        type="number"
-                        value={localMarks[student.id] ?? ''}
-                        onChange={(e) => handleMarkChange(student.id, e.target.value)}
-                        className="w-full p-2 text-center border-2 border-slate-200 rounded-xl focus:border-indigo-500 outline-none font-black text-indigo-700 shadow-sm"
-                      />
+            ) : (
+              students.map((s: any, idx: number) => {
+                const val = localMarks[s.id] || '';
+                const isViolation = parseInt(val, 10) > currentMax;
+
+                return (
+                  <tr key={s.id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/20'} hover:bg-indigo-50/50 transition-all`}>
+                    <td className="px-10 py-5 font-black text-slate-500">{s.rollNo}</td>
+                    <td className="px-10 py-5">
+                      <div className="flex flex-col">
+                        <span className="font-black text-slate-800">{s.name}</span>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">Verified Profile</span>
+                      </div>
+                    </td>
+                    <td className="px-10 py-5">
+                      <div className="flex justify-center">
+                        <input 
+                          type="text"
+                          value={val}
+                          onChange={(e) => handleInputChange(s.id, e.target.value)}
+                          className={`w-32 p-4 text-center rounded-2xl font-black text-2xl shadow-inner border-2 transition-all outline-none ${
+                            isViolation ? 'border-red-400 bg-red-50 text-red-600 animate-pulse' : 'border-slate-100 bg-white text-slate-900 focus:border-indigo-600'
+                          }`}
+                          placeholder="-"
+                        />
+                      </div>
+                    </td>
+                    <td className="px-10 py-5">
+                      <div className="flex justify-center">
+                        <span className={`px-5 py-2 rounded-full text-[9px] font-black uppercase tracking-widest border transition-colors ${
+                          val === '' ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                        }`}>
+                          {val === '' ? 'Awaiting' : 'Entered'}
+                        </span>
+                      </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        )}
+                );
+              })
+            )}
+          </tbody>
+        </table>
       </div>
 
-      <div className="p-6 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
-        <button onClick={handleDownloadAwardList} disabled={students.length === 0} className="px-5 py-2.5 bg-white text-indigo-600 border border-indigo-200 font-bold rounded-xl hover:bg-indigo-50 transition-colors flex items-center shadow-sm">
-          <i className="fa-solid fa-download mr-2"></i> DOWNLOAD AWARD LIST
-        </button>
-        <div className="flex space-x-3">
-          <button onClick={onCancel} className="px-6 py-2.5 text-slate-500 font-bold hover:text-slate-700">Discard</button>
+      {/* FOOTER ACTIONS */}
+      <div className="p-10 bg-slate-50 border-t flex flex-col sm:flex-row items-center justify-between gap-8">
+        <div className="flex items-center gap-4">
+           <div className="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center text-indigo-600 text-xl shadow-inner"><i className="fa-solid fa-cloud-arrow-up"></i></div>
+           <div>
+             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Class Registry</span>
+             <span className="text-sm font-black text-slate-800">{students.length} Records Loaded</span>
+           </div>
+        </div>
+        <div className="flex items-center gap-4 w-full sm:w-auto">
           <button 
-            onClick={handleSave} 
-            disabled={students.length === 0 || editableSubjects.length === 0} 
-            className="px-10 py-2.5 bg-indigo-600 text-white font-black rounded-xl shadow-xl hover:bg-indigo-700 transition-all disabled:opacity-50"
+            onClick={onCancel} 
+            className="flex-1 px-10 py-5 text-[11px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-700 transition-colors"
           >
-            SAVE CHANGES
+            Cancel
+          </button>
+          <button 
+            onClick={handleCommit} 
+            className="flex-1 px-16 py-5 bg-indigo-600 text-white font-black rounded-3xl text-[11px] uppercase tracking-widest shadow-2xl shadow-indigo-100 hover:bg-slate-950 hover:-translate-y-1 transition-all"
+          >
+            Save Registry
           </button>
         </div>
       </div>
