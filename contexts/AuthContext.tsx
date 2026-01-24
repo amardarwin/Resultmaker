@@ -25,21 +25,21 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const safeParse = (key: string, fallback: any) => {
+  try {
+    const item = localStorage.getItem(key);
+    if (!item || item === "undefined") return fallback;
+    return JSON.parse(item);
+  } catch (e) {
+    console.error(`Error parsing localStorage key "${key}":`, e);
+    return fallback;
+  }
+};
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('edurank_active_session');
-    return saved ? JSON.parse(saved) : null;
-  });
-
-  const [schoolConfig, setSchoolConfig] = useState<SchoolConfig | null>(() => {
-    const saved = localStorage.getItem('school_config');
-    return saved ? JSON.parse(saved) : null;
-  });
-
-  const [staffUsers, setStaffUsers] = useState<StaffUser[]>(() => {
-    const saved = localStorage.getItem('staff_users');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [user, setUser] = useState<User | null>(() => safeParse('edurank_active_session', null));
+  const [schoolConfig, setSchoolConfig] = useState<SchoolConfig | null>(() => safeParse('school_config', null));
+  const [staffUsers, setStaffUsers] = useState<StaffUser[]>(() => safeParse('staff_users', []));
 
   useEffect(() => {
     if (schoolConfig) localStorage.setItem('school_config', JSON.stringify(schoolConfig));
@@ -77,12 +77,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     let authUser: User | null = null;
 
     if (creds.category === 'STAFF') {
-      // 1. Check Admin
       if (creds.username === 'admin' && creds.pass === schoolConfig?.adminPassword) {
         authUser = { id: 'admin', username: 'admin', name: schoolConfig.adminName, role: Role.ADMIN };
-      } 
-      // 2. Check Staff Directory (Incharges and Teachers)
-      else {
+      } else {
         const staff = staffUsers.find(s => s.username === creds.username && s.password === creds.pass);
         if (staff) {
           const { password, ...safeUser } = staff;
@@ -90,8 +87,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
       }
     } else {
-      // Student Login
-      const students: Student[] = JSON.parse(localStorage.getItem('school_results_students') || '[]');
+      const students: Student[] = safeParse('school_results_students', []);
       const student = students.find(s => s.classLevel === creds.classLevel && s.rollNo === creds.rollNo);
       const correctPassword = student?.password || '1234';
       if (student && creds.pass === correctPassword) {
@@ -135,7 +131,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return false;
   };
 
-  // View is restricted only for Students or Staff who don't have multi-class assignments
   const isViewRestricted = user?.role === Role.STUDENT;
 
   const accessibleClasses = React.useMemo(() => {
