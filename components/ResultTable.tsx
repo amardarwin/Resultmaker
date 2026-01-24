@@ -1,237 +1,254 @@
-
 import React, { useState, useMemo } from 'react';
-import { CalculatedResult, ClassLevel, SubjectType, StudentMarks, Role } from '../types';
-import { GET_SUBJECTS_FOR_CLASS } from '../constants';
-import { generateStudentRemarks } from '../utils/gemini';
-import { useAuth } from '../contexts/AuthContext';
-import { getColumnPermission, canPerformAdminAction } from '../utils/permissions';
-import { exportToCSV } from '../utils/export';
 
-interface ResultTableProps {
-  results: CalculatedResult[];
-  classLevel: ClassLevel;
-  onEdit: (student: CalculatedResult) => void;
-  onDelete: (id: string) => void;
-  highlightSubject?: keyof StudentMarks | null;
-}
-
-const ResultTable: React.FC<ResultTableProps> = ({ results, classLevel, onEdit, onDelete, highlightSubject }) => {
-  const { user } = useAuth();
+/**
+ * ResultTable - STANDALONE VERSION
+ * Features: Dynamic Exam selection, Prefix-based data fetching, 
+ * and localized max-marks logic.
+ */
+const ResultTable: React.FC<any> = ({ 
+  results = [], 
+  classLevel = '6', 
+  onEdit, 
+  onDelete 
+}) => {
+  // 1. Local State for Exam Type
+  const [examType, setExamType] = useState<string>('Final Exam');
   const [searchTerm, setSearchTerm] = useState('');
-  const [remarks, setRemarks] = useState<Record<string, string>>({});
-  const [loadingRemarks, setLoadingRemarks] = useState<Record<string, boolean>>({});
-  const subjects = GET_SUBJECTS_FOR_CLASS(classLevel);
 
-  const filteredResults = useMemo(() => {
-    if (!searchTerm.trim()) return results;
+  // 2. Localized Subject Configuration (Matches Entry Form logic)
+  const subjects = useMemo(() => {
+    const isMiddle = ['6', '7', '8'].includes(classLevel);
+    if (isMiddle) {
+      return [
+        { key: 'pbi', label: 'Punjabi' },
+        { key: 'hindi', label: 'Hindi' },
+        { key: 'eng', label: 'English' },
+        { key: 'math', label: 'Math' },
+        { key: 'sci', label: 'Science' },
+        { key: 'sst', label: 'SST' },
+      ];
+    }
+    return [
+      { key: 'pbi_a', label: 'Pbi A' },
+      { key: 'pbi_b', label: 'Pbi B' },
+      { key: 'hindi', label: 'Hindi' },
+      { key: 'eng', label: 'English' },
+      { key: 'math', label: 'Math' },
+      { key: 'sci', label: 'Science' },
+      { key: 'sst', label: 'SST' },
+    ];
+  }, [classLevel]);
+
+  // 3. Calculation Helpers
+  const getMaxMarks = (exam: string, subKey: string) => {
+    if (exam === 'Bimonthly') return 20;
+    if (exam === 'Term Exam' || exam === 'Preboard') return 80;
+    if (exam === 'Final Exam') {
+      const lower = subKey.toLowerCase();
+      if (lower.includes('pbi_a') || lower.includes('pbi_b') || lower.includes('punjabi a') || lower.includes('punjabi b')) {
+        return 75;
+      }
+      return 100;
+    }
+    return 100;
+  };
+
+  const getStorageKey = (exam: string, subKey: string) => {
+    const prefix = exam.toLowerCase().split(' ')[0]; // 'final', 'term', etc.
+    return `${prefix}_${subKey.toLowerCase()}`;
+  };
+
+  // 4. Process and Calculate Results
+  const processedData = useMemo(() => {
     const lowerSearch = searchTerm.toLowerCase();
-    return results.filter(
-      (res) =>
-        res.name.toLowerCase().includes(lowerSearch) ||
-        res.rollNo.toLowerCase().includes(lowerSearch)
-    );
-  }, [results, searchTerm]);
+    
+    return results
+      .filter((s: any) => 
+        s.name.toLowerCase().includes(lowerSearch) || 
+        s.rollNo.toString().includes(lowerSearch)
+      )
+      .map((student: any) => {
+        let obtained = 0;
+        let totalMax = 0;
+        
+        const marksMapping: Record<string, number> = {};
+        
+        subjects.forEach(sub => {
+          const key = getStorageKey(examType, sub.key);
+          const score = student.marks?.[key] || 0;
+          marksMapping[sub.key] = score;
+          
+          obtained += score;
+          totalMax += getMaxMarks(examType, sub.key);
+        });
 
-  const handleGenerateRemark = async (student: CalculatedResult) => {
-    setLoadingRemarks(prev => ({ ...prev, [student.id]: true }));
-    const remark = await generateStudentRemarks(student);
-    setRemarks(prev => ({ ...prev, [student.id]: remark || "Excellent effort!" }));
-    setLoadingRemarks(prev => ({ ...prev, [student.id]: false }));
+        const percentage = totalMax > 0 ? (obtained / totalMax) * 100 : 0;
+
+        return {
+          ...student,
+          displayedMarks: marksMapping,
+          calculatedObtained: obtained,
+          calculatedMax: totalMax,
+          calculatedPercentage: percentage.toFixed(2),
+          isPass: percentage >= 33
+        };
+      })
+      .sort((a, b) => b.calculatedObtained - a.calculatedObtained); // Automatic Ranking Sort
+  }, [results, examType, subjects, searchTerm]);
+
+  const handlePrint = () => {
+    window.print();
   };
-
-  const handleExport = () => {
-    exportToCSV(results, classLevel);
-  };
-
-  const isAdminAuthorized = canPerformAdminAction(user, classLevel);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="relative max-w-md w-full">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <i className="fa-solid fa-magnifying-glass text-slate-400"></i>
+    <div className="space-y-6 animate-in fade-in duration-500">
+      {/* TOOLBAR */}
+      <div className="flex flex-col lg:flex-row justify-between items-center gap-6 bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm">
+        <div className="flex flex-col md:flex-row items-center gap-4 w-full lg:w-auto">
+          <div className="relative w-full md:w-80">
+            <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+            <input 
+              type="text" 
+              placeholder="Search Student..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-12 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-indigo-500 transition-all"
+            />
           </div>
-          <input
-            type="text"
-            placeholder="Search result sheet..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="block w-full pl-10 pr-3 py-3 border-2 border-slate-100 rounded-2xl bg-white placeholder-slate-400 focus:outline-none focus:border-indigo-500 font-bold transition-all shadow-sm"
-          />
+
+          <div className="bg-slate-100 p-1 rounded-2xl flex w-full md:w-auto">
+            {['Bimonthly', 'Term Exam', 'Preboard', 'Final Exam'].map(type => (
+              <button
+                key={type}
+                /* Combined duplicate onClick handlers and fixed reference to undefined setSearchType */
+                onClick={() => setExamType(type)}
+                className={`flex-1 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                  examType === type ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                {type.split(' ')[0]}
+              </button>
+            ))}
+          </div>
         </div>
-        
-        <div className="flex items-center gap-3">
-          {highlightSubject && (
-            <div className="flex items-center gap-2 px-6 py-2 bg-indigo-600 text-white rounded-2xl animate-in fade-in zoom-in-95 duration-200 shadow-lg shadow-indigo-100">
-              <span className="text-[10px] font-black uppercase tracking-widest">Focus:</span>
-              <span className="text-xs font-black uppercase">
-                {subjects.find(s => s.key === highlightSubject)?.label || highlightSubject}
-              </span>
-            </div>
-          )}
-          
-          {(user?.role === Role.ADMIN || user?.role === Role.CLASS_INCHARGE) && (
-            <button 
-              onClick={handleExport}
-              className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 text-slate-700 font-black rounded-2xl text-[10px] uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm"
-            >
-              <i className="fa-solid fa-file-csv text-emerald-500"></i>
-              Download Result Sheet
-            </button>
-          )}
+
+        <div className="flex items-center gap-3 w-full lg:w-auto">
+          <button 
+            onClick={handlePrint}
+            className="flex-1 lg:flex-none px-6 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-indigo-600 transition-all flex items-center justify-center gap-2"
+          >
+            <i className="fa-solid fa-print"></i>
+            Print / PDF
+          </button>
         </div>
       </div>
 
-      <div className="bg-white rounded-[32px] shadow-sm border border-slate-100 overflow-hidden">
+      {/* RESULT SHEET */}
+      <div className="bg-white rounded-[40px] shadow-2xl border border-slate-100 overflow-hidden print:shadow-none print:border-none">
         <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-sm text-left border-collapse">
-            <thead className="text-[10px] text-slate-400 font-black uppercase bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th className="px-6 py-5 sticky left-0 bg-slate-50 z-20 border-r border-slate-100">Roll No</th>
-                <th className="px-6 py-5 sticky left-[84px] bg-slate-50 z-20 border-r border-slate-200">Student Info</th>
-                
-                {subjects.map(sub => {
-                  const perm = getColumnPermission(user, classLevel, sub.key);
-                  const isLocked = perm === 'READ';
-                  return (
-                    <th 
-                      key={sub.key} 
-                      className={`px-4 py-5 text-center whitespace-nowrap border-r border-slate-100 transition-all ${
-                        sub.key === highlightSubject ? 'bg-indigo-600 text-white z-30' : 
-                        sub.type === SubjectType.GRADING ? 'bg-orange-50/50 text-orange-800 italic' : ''
-                      } ${isLocked ? 'opacity-40' : ''}`}
-                    >
-                      <div className="flex items-center justify-center gap-2">
-                        {sub.label}
-                        {isLocked && <i className="fa-solid fa-lock text-[8px] mb-0.5"></i>}
-                      </div>
-                    </th>
-                  );
-                })}
-                
-                <th className="px-6 py-5 text-center font-black text-blue-800 bg-blue-50/50 border-r border-slate-100">Total</th>
-                <th className="px-6 py-5 text-center font-black text-emerald-800 bg-emerald-50/50 border-r border-slate-100">%</th>
-                <th className="px-6 py-5 text-center font-black text-slate-800 bg-slate-50/50 border-r border-slate-100">Rank</th>
-                {user?.role !== Role.STUDENT && <th className="px-6 py-5 text-center">Control</th>}
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-slate-900 text-white">
+              <tr className="text-[10px] font-black uppercase tracking-[0.2em]">
+                <th className="px-8 py-6 sticky left-0 bg-slate-900 z-10">Rank</th>
+                <th className="px-8 py-6 sticky left-[80px] bg-slate-900 z-10">Roll No</th>
+                <th className="px-8 py-6 min-w-[200px]">Student Identity</th>
+                {subjects.map(sub => (
+                  <th key={sub.key} className="px-4 py-6 text-center whitespace-nowrap">
+                    <div className="flex flex-col">
+                      <span>{sub.label}</span>
+                      <span className="text-[7px] opacity-50 font-black">Max {getMaxMarks(examType, sub.key)}</span>
+                    </div>
+                  </th>
+                ))}
+                <th className="px-6 py-6 text-center bg-indigo-800">Total</th>
+                <th className="px-6 py-6 text-center bg-indigo-700">%age</th>
+                <th className="px-6 py-6 text-center bg-slate-800">Status</th>
+                <th className="px-6 py-6 text-center print:hidden">Edit</th>
               </tr>
             </thead>
-            
             <tbody className="divide-y divide-slate-100">
-              {filteredResults.length === 0 ? (
+              {processedData.length === 0 ? (
                 <tr>
-                  <td colSpan={subjects.length + 6} className="px-6 py-20 text-center text-slate-400 italic bg-white">
-                    <div className="flex flex-col items-center">
-                       <i className="fa-solid fa-folder-open text-4xl mb-4 opacity-20"></i>
-                       <p className="font-black text-sm uppercase tracking-widest">No matching student records</p>
-                    </div>
+                  <td colSpan={subjects.length + 7} className="px-8 py-32 text-center text-slate-300 font-black uppercase tracking-widest text-xs">
+                    No results found for {examType}
                   </td>
                 </tr>
               ) : (
-                filteredResults.map((res) => (
-                  <React.Fragment key={res.id}>
-                    <tr className="hover:bg-slate-50/50 transition-colors group">
-                      <td className="px-6 py-5 font-black text-slate-500 sticky left-0 bg-white group-hover:bg-slate-50/50 z-10 border-r border-slate-100">
-                        {res.rollNo}
+                processedData.map((res: any, idx: number) => (
+                  <tr key={res.id} className="hover:bg-indigo-50/30 transition-colors group">
+                    <td className="px-8 py-5 text-center sticky left-0 bg-white group-hover:bg-slate-50 z-10">
+                      <span className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black ${
+                        idx === 0 ? 'bg-yellow-400 text-white' : 
+                        idx === 1 ? 'bg-slate-300 text-white' : 
+                        idx === 2 ? 'bg-amber-100 text-amber-700' : 
+                        'text-slate-400'
+                      }`}>
+                        {idx + 1}
+                      </span>
+                    </td>
+                    <td className="px-8 py-5 font-black text-slate-500 sticky left-[80px] bg-white group-hover:bg-slate-50 z-10 border-r border-slate-50">
+                      {res.rollNo}
+                    </td>
+                    <td className="px-8 py-5 font-black text-slate-800">
+                      {res.name}
+                    </td>
+                    {subjects.map(sub => (
+                      <td key={sub.key} className="px-4 py-5 text-center font-bold text-slate-600">
+                        {res.displayedMarks[sub.key] ?? '-'}
                       </td>
-                      <td className="px-6 py-5 sticky left-[84px] bg-white group-hover:bg-slate-50/50 z-10 border-r border-slate-200 min-w-[220px]">
-                        <div className="flex flex-col">
-                          <span className="font-black text-slate-800 truncate" title={res.name}>
-                            {res.name}
-                          </span>
-                          <div className="flex items-center gap-2 mt-2">
-                            <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter ${
-                              res.status === 'Pass' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'
-                            }`}>
-                              {res.status}
-                            </span>
-                            {user?.role !== Role.STUDENT && (
-                              <button 
-                                onClick={() => handleGenerateRemark(res)}
-                                className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all"
-                              >
-                                {loadingRemarks[res.id] ? <i className="fa-solid fa-spinner animate-spin"></i> : <i className="fa-solid fa-wand-magic-sparkles"></i>}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      
-                      {subjects.map(sub => {
-                        const score = res.marks[sub.key] ?? 0;
-                        const isFail = sub.type === SubjectType.MAIN && score < 33;
-                        const perm = getColumnPermission(user, classLevel, sub.key);
-                        const isLocked = perm === 'READ';
-                        const isHighlighted = sub.key === highlightSubject;
-                        
-                        return (
-                          <td 
-                            key={sub.key} 
-                            className={`px-4 py-5 text-center border-r border-slate-100 transition-colors ${
-                              isHighlighted ? 'bg-slate-900 text-white font-black' : 
-                              isLocked ? 'bg-slate-50 opacity-40' : ''
-                            }`}
-                          >
-                            <span className={`text-sm font-bold ${isFail ? 'text-red-600' : ''} ${isHighlighted ? 'text-white' : 'text-slate-600'}`}>
-                              {res.marks[sub.key] ?? '-'}
-                            </span>
-                          </td>
-                        );
-                      })}
-                      
-                      <td className="px-6 py-5 text-center font-black text-blue-700 bg-blue-50/10 border-r border-slate-100">
-                        {res.total}
-                      </td>
-                      <td className="px-6 py-5 text-center font-black text-emerald-700 bg-emerald-50/10 border-r border-slate-100">
-                        {res.percentage}%
-                      </td>
-                      <td className="px-6 py-5 text-center border-r border-slate-100">
-                        <span className={`inline-flex items-center justify-center w-8 h-8 rounded-xl font-black text-xs ${
-                          res.rank === 1 ? 'bg-yellow-400 text-white shadow-lg shadow-yellow-100' :
-                          res.rank === 2 ? 'bg-slate-200 text-slate-600' :
-                          res.rank === 3 ? 'bg-amber-100 text-amber-700' :
-                          'bg-slate-50 text-slate-400'
-                        }`}>
-                          {res.rank}
-                        </span>
-                      </td>
-                      
-                      {user?.role !== Role.STUDENT && (
-                        <td className="px-6 py-5 text-center">
-                          {isAdminAuthorized ? (
-                            <div className="flex items-center justify-center gap-2">
-                              <button onClick={() => onEdit(res)} className="w-8 h-8 flex items-center justify-center text-indigo-400 hover:bg-indigo-600 hover:text-white rounded-xl transition-all"><i className="fa-solid fa-pen"></i></button>
-                              <button onClick={() => confirm(`Permanently delete ${res.name}?`) && onDelete(res.id)} className="w-8 h-8 flex items-center justify-center text-red-300 hover:bg-red-600 hover:text-white rounded-xl transition-all"><i className="fa-solid fa-trash"></i></button>
-                            </div>
-                          ) : (
-                            <i className="fa-solid fa-lock text-slate-200"></i>
-                          )}
-                        </td>
-                      )}
-                    </tr>
-                    
-                    {remarks[res.id] && (
-                      <tr className="bg-indigo-50/30">
-                        <td colSpan={subjects.length + 6} className="px-8 py-4 border-b border-indigo-100">
-                          <div className="flex items-center gap-4">
-                            <div className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse"></div>
-                            <p className="text-xs font-bold text-indigo-700 italic tracking-tight">"{remarks[res.id]}"</p>
-                            <button onClick={() => setRemarks(prev => {
-                              const next = {...prev};
-                              delete next[res.id];
-                              return next;
-                            })} className="ml-auto text-indigo-300 hover:text-indigo-600">
-                              <i className="fa-solid fa-circle-xmark"></i>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
+                    ))}
+                    <td className="px-6 py-5 text-center font-black text-indigo-700 bg-indigo-50/30">
+                      {res.calculatedObtained}
+                    </td>
+                    <td className="px-6 py-5 text-center font-black text-slate-900">
+                      {res.calculatedPercentage}%
+                    </td>
+                    <td className="px-6 py-5 text-center">
+                      <span className={`px-4 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${
+                        res.isPass ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-red-100 text-red-700 border-red-200'
+                      }`}>
+                        {res.isPass ? 'Pass' : 'Fail'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-5 text-center print:hidden">
+                       <button onClick={() => onEdit && onEdit(res)} className="w-8 h-8 bg-slate-100 rounded-lg text-slate-400 hover:bg-indigo-600 hover:text-white transition-all">
+                         <i className="fa-solid fa-pen"></i>
+                       </button>
+                    </td>
+                  </tr>
                 ))
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* QUICK ANALYTICS FOOTER */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
+           <div className="w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center text-xl shadow-inner"><i className="fa-solid fa-graduation-cap"></i></div>
+           <div>
+              <span className="text-[10px] font-black text-slate-400 uppercase block">Pass Percentage</span>
+              <span className="text-xl font-black text-slate-800">
+                {processedData.length > 0 ? ((processedData.filter((r: any) => r.isPass).length / processedData.length) * 100).toFixed(0) : 0}%
+              </span>
+           </div>
+        </div>
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
+           <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center text-xl shadow-inner"><i className="fa-solid fa-medal"></i></div>
+           <div>
+              <span className="text-[10px] font-black text-slate-400 uppercase block">Top Achiever</span>
+              <span className="text-xl font-black text-slate-800 truncate max-w-[150px] block">
+                {processedData[0]?.name || 'N/A'}
+              </span>
+           </div>
+        </div>
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
+           <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center text-xl shadow-inner"><i className="fa-solid fa-users"></i></div>
+           <div>
+              <span className="text-[10px] font-black text-slate-400 uppercase block">Total Strength</span>
+              <span className="text-xl font-black text-slate-800">{processedData.length} Students</span>
+           </div>
         </div>
       </div>
     </div>
