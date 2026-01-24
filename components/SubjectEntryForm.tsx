@@ -1,26 +1,26 @@
 import React, { useState, useEffect, useMemo } from 'react';
 
 /**
- * SubjectEntryForm - Self-Contained EduRank Registry Portal
- * Logic: Fixed Max Marks + Punjabi Rule + Dynamic Exam Keys
+ * SubjectEntryForm - Hardened EduRank Registry Portal
+ * Prevents crashes through extreme defensive prop handling and initialization.
  */
 const SubjectEntryForm = ({ 
-  classLevel, 
+  classLevel = '6', 
   onClassChange, 
-  students, 
+  students = [], 
   onSave, 
   onCancel, 
-  examType, 
+  examType = 'Final Exam', 
   onExamTypeChange,
   currentUser 
 }: any) => {
 
-  // INTERNAL RULES ENGINE (Synchronized with App Enums)
+  // INTERNAL RULES ENGINE
   const EXAM_TYPES = ['Bimonthly', 'Term Exam', 'Preboard', 'Final Exam'];
   
   const getSubjectsForClass = (cls: string) => {
-    const isMiddle = ['6', '7', '8'].includes(cls);
-    return isMiddle ? [
+    const isMiddle = ['6', '7', '8'].includes(String(cls));
+    const subjects = isMiddle ? [
       { key: 'pbi', label: 'Punjabi' },
       { key: 'hindi', label: 'Hindi' },
       { key: 'eng', label: 'English' },
@@ -41,58 +41,84 @@ const SubjectEntryForm = ({
       { key: 'comp', label: 'Computer' },
       { key: 'phy_edu', label: 'Phy Edu' }
     ];
+    return subjects;
   };
 
   const getRuleMaxMarks = (type: string, sub: string) => {
-    if (type === 'Bimonthly') return 20;
-    if (type === 'Term Exam' || type === 'Preboard') return 80;
-    if (type === 'Final Exam') {
-      // Rule: Punjabi A/B in Final Exam = 75
-      if (sub === 'pbi_a' || sub === 'pbi_b') return 75;
+    const t = String(type || '');
+    const s = String(sub || '');
+    if (t === 'Bimonthly') return 20;
+    if (t === 'Term Exam' || t === 'Preboard') return 80;
+    if (t === 'Final Exam') {
+      if (s === 'pbi_a' || s === 'pbi_b') return 75;
       return 100;
     }
     return 100;
   };
 
-  // COMPONENT STATE
+  // COMPONENT STATE - Initialized safely
   const availableSubjects = useMemo(() => getSubjectsForClass(classLevel), [classLevel]);
-  const [selectedSub, setSelectedSub] = useState(availableSubjects[0].key);
+  
+  // CRASH FIX: Ensure we have a valid initial key
+  const [selectedSub, setSelectedSub] = useState(() => availableSubjects?.[0]?.key || '');
   const [localMarks, setLocalMarks] = useState<any>({});
   const [status, setStatus] = useState<any>({});
 
-  // DERIVED VALUES
-  const currentMax = getRuleMaxMarks(examType, selectedSub);
-  const storageKey = `${examType.toLowerCase()}_${selectedSub.toLowerCase()}`;
+  // Sync selectedSub if availableSubjects change and previous is no longer valid
+  useEffect(() => {
+    if (!availableSubjects.find(s => s.key === selectedSub)) {
+      setSelectedSub(availableSubjects?.[0]?.key || '');
+    }
+  }, [availableSubjects, selectedSub]);
+
+  // DERIVED VALUES - Safe string operations
+  const safeExamType = String(examType || 'Final Exam');
+  const safeSelectedSub = String(selectedSub || '');
+  const currentMax = getRuleMaxMarks(safeExamType, safeSelectedSub);
+  const storageKey = `${safeExamType.toLowerCase()}_${safeSelectedSub.toLowerCase()}`;
 
   // SYNC DATA ON CONTEXT CHANGE
   useEffect(() => {
     const freshMarks: any = {};
     const freshStatus: any = {};
-    students.forEach((s: any) => {
-      const val = s.marks?.[storageKey];
-      freshMarks[s.id] = val !== undefined ? val.toString() : '';
-      freshStatus[s.id] = 'Stored';
+    const studentList = Array.isArray(students) ? students : [];
+    
+    studentList.forEach((s: any) => {
+      if (s && s.id) {
+        const val = s.marks?.[storageKey];
+        freshMarks[s.id] = (val !== undefined && val !== null) ? val.toString() : '';
+        freshStatus[s.id] = 'Stored';
+      }
     });
     setLocalMarks(freshMarks);
     setStatus(freshStatus);
-  }, [selectedSub, examType, students, storageKey]);
+  }, [safeSelectedSub, safeExamType, students, storageKey]);
 
   const handleInputChange = (sid: string, val: string) => {
+    if (!sid) return;
     if (val !== '' && !/^\d+$/.test(val)) return; 
     setLocalMarks((prev: any) => ({ ...prev, [sid]: val }));
     setStatus((prev: any) => ({ ...prev, [sid]: 'Pending' }));
   };
 
   const handleCommitChanges = () => {
-    if (currentUser?.role === 'STUDENT') return alert("❌ Access Denied.");
-
-    const invalidCount = Object.values(localMarks).filter((v: any) => parseInt(v || '0') > currentMax).length;
-    if (invalidCount > 0) {
-      alert(`⚠️ Validation Error: ${invalidCount} entry(s) exceed Max Marks (${currentMax}). Please rectify.`);
+    if (currentUser?.role === 'STUDENT') {
+      alert("❌ Access Denied.");
       return;
     }
 
-    const updatedData = students.map((s: any) => ({
+    const studentList = Array.isArray(students) ? students : [];
+    const invalidEntries = Object.entries(localMarks).filter(([id, v]: [string, any]) => {
+      const numericVal = parseInt(v || '0');
+      return numericVal > currentMax;
+    });
+
+    if (invalidEntries.length > 0) {
+      alert(`⚠️ Validation Error: Some entries exceed Max Marks (${currentMax}). Please rectify.`);
+      return;
+    }
+
+    const updatedData = studentList.map((s: any) => ({
       ...s,
       marks: {
         ...(s.marks || {}),
@@ -100,15 +126,31 @@ const SubjectEntryForm = ({
       }
     }));
 
-    onSave(updatedData);
-    
-    const savedStatus: any = {};
-    students.forEach((s: any) => savedStatus[s.id] = 'Stored');
-    setStatus(savedStatus);
-    alert(`✅ ${examType} ${selectedSub.toUpperCase()} marks successfully committed.`);
+    if (typeof onSave === 'function') {
+      onSave(updatedData);
+      
+      const savedStatus: any = {};
+      studentList.forEach((s: any) => {
+        if (s && s.id) savedStatus[s.id] = 'Stored';
+      });
+      setStatus(savedStatus);
+      alert(`✅ ${safeExamType} ${safeSelectedSub.toUpperCase()} marks committed.`);
+    }
   };
 
   const isSelectorDisabled = currentUser?.role === 'CLASS_INCHARGE';
+
+  // Final fallback check to prevent mounting errors
+  if (!availableSubjects || availableSubjects.length === 0) {
+    return (
+      <div className="p-20 text-center bg-white rounded-[40px] shadow-xl">
+        <i className="fa-solid fa-triangle-exclamation text-4xl text-amber-500 mb-4"></i>
+        <h3 className="text-xl font-black text-slate-800 uppercase tracking-widest">Configuration Error</h3>
+        <p className="text-slate-400 mt-2">Class {classLevel} subjects could not be resolved.</p>
+        <button onClick={onCancel} className="mt-6 px-10 py-3 bg-indigo-600 text-white rounded-xl font-black uppercase text-xs">Return to Safety</button>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-[40px] shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-500">
@@ -123,7 +165,7 @@ const SubjectEntryForm = ({
             <div>
               <h2 className="text-3xl font-black tracking-tight leading-none">Assessment Entry Portal</h2>
               <p className="text-indigo-200 text-[10px] font-black uppercase tracking-[0.25em] mt-3 opacity-80">
-                School Registry Sync Mode • {currentUser?.name}
+                School Registry Sync Mode • {currentUser?.name || 'Authorized User'}
               </p>
             </div>
           </div>
@@ -134,7 +176,7 @@ const SubjectEntryForm = ({
               <select 
                 disabled={isSelectorDisabled}
                 value={classLevel} 
-                onChange={(e) => onClassChange(e.target.value)}
+                onChange={(e) => onClassChange && onClassChange(e.target.value)}
                 className="bg-white text-slate-900 px-4 py-2.5 rounded-2xl text-[11px] font-black outline-none focus:ring-4 focus:ring-indigo-400/30 shadow-sm"
               >
                 {['6','7','8','9','10'].map(c => <option key={c} value={c}>Class {c}</option>)}
@@ -144,8 +186,8 @@ const SubjectEntryForm = ({
             <div className="flex flex-col min-w-[140px]">
               <span className="text-[8px] font-black uppercase text-indigo-200 ml-1 mb-1">Exam Type</span>
               <select 
-                value={examType} 
-                onChange={(e) => onExamTypeChange(e.target.value)}
+                value={safeExamType} 
+                onChange={(e) => onExamTypeChange && onExamTypeChange(e.target.value)}
                 className="bg-white text-slate-900 px-4 py-2.5 rounded-2xl text-[11px] font-black outline-none focus:ring-4 focus:ring-indigo-400/30 shadow-sm"
               >
                 {EXAM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
@@ -155,7 +197,7 @@ const SubjectEntryForm = ({
             <div className="flex flex-col min-w-[130px]">
               <span className="text-[8px] font-black uppercase text-indigo-200 ml-1 mb-1">Subject</span>
               <select 
-                value={selectedSub} 
+                value={safeSelectedSub} 
                 onChange={(e) => setSelectedSub(e.target.value)}
                 className="bg-white text-slate-900 px-4 py-2.5 rounded-2xl text-[11px] font-black outline-none focus:ring-4 focus:ring-indigo-400/30 shadow-sm"
               >
@@ -183,51 +225,60 @@ const SubjectEntryForm = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {students.map((s: any, idx: number) => {
-              const isViolation = parseInt(localMarks[s.id] || '0') > currentMax;
-              const isPending = status[s.id] === 'Pending';
+            {students.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="px-10 py-20 text-center text-slate-300 font-black uppercase tracking-[0.3em] text-[10px]">
+                  No student records found for class {classLevel}
+                </td>
+              </tr>
+            ) : (
+              students.map((s: any, idx: number) => {
+                if (!s) return null;
+                const isViolation = parseInt(localMarks[s.id] || '0') > currentMax;
+                const isPending = status[s.id] === 'Pending';
 
-              return (
-                <tr key={s.id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/20'} hover:bg-indigo-50/50 transition-colors group`}>
-                  <td className="px-10 py-5">
-                    <span className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-slate-100 text-slate-500 font-black text-xs group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm">
-                      {s.rollNo}
-                    </span>
-                  </td>
-                  <td className="px-10 py-5">
-                    <div className="flex flex-col">
-                      <span className="text-sm font-black text-slate-800">{s.name}</span>
-                      <span className="text-[9px] font-bold text-slate-400 uppercase italic">UID: {s.id.slice(-6).toUpperCase()}</span>
-                    </div>
-                  </td>
-                  <td className="px-10 py-5">
-                    <div className="flex justify-center">
-                      <div className="relative w-full max-w-[140px]">
-                        <input 
-                          type="text"
-                          value={localMarks[s.id] || ''}
-                          onChange={(e) => handleInputChange(s.id, e.target.value)}
-                          className={`w-full p-3.5 text-center rounded-2xl font-black text-xl shadow-sm border-2 transition-all outline-none ${
-                            isViolation ? 'border-red-400 bg-red-50 text-red-600 focus:ring-4 focus:ring-red-100' : 'border-slate-100 bg-white text-indigo-700 focus:border-indigo-600 focus:ring-8 focus:ring-indigo-50'
-                          }`}
-                          placeholder="-"
-                        />
-                        {isViolation && <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-[10px] animate-bounce shadow-lg border-2 border-white">!</div>}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-10 py-5">
-                    <div className="flex justify-center">
-                      <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${
-                        isPending ? 'bg-amber-50 text-amber-600 border-amber-200 animate-pulse' : 'bg-emerald-50 text-emerald-600 border-emerald-200'
-                      }`}>
-                        {isPending ? 'Pending' : 'Stored'}
+                return (
+                  <tr key={s.id || idx} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/20'} hover:bg-indigo-50/50 transition-colors group`}>
+                    <td className="px-10 py-5">
+                      <span className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-slate-100 text-slate-500 font-black text-xs group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm">
+                        {s.rollNo}
                       </span>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
+                    </td>
+                    <td className="px-10 py-5">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-black text-slate-800">{s.name}</span>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase italic">UID: {String(s.id || '').slice(-6).toUpperCase()}</span>
+                      </div>
+                    </td>
+                    <td className="px-10 py-5">
+                      <div className="flex justify-center">
+                        <div className="relative w-full max-w-[140px]">
+                          <input 
+                            type="text"
+                            value={localMarks[s.id] || ''}
+                            onChange={(e) => handleInputChange(s.id, e.target.value)}
+                            className={`w-full p-3.5 text-center rounded-2xl font-black text-xl shadow-sm border-2 transition-all outline-none ${
+                              isViolation ? 'border-red-400 bg-red-50 text-red-600 focus:ring-4 focus:ring-red-100' : 'border-slate-100 bg-white text-indigo-700 focus:border-indigo-600 focus:ring-8 focus:ring-indigo-50'
+                            }`}
+                            placeholder="-"
+                          />
+                          {isViolation && <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-[10px] animate-bounce shadow-lg border-2 border-white">!</div>}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-10 py-5">
+                      <div className="flex justify-center">
+                        <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${
+                          isPending ? 'bg-amber-50 text-amber-600 border-amber-200 animate-pulse' : 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                        }`}>
+                          {isPending ? 'Pending' : 'Stored'}
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>
