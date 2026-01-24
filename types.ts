@@ -16,7 +16,7 @@ export enum ExamType {
 
 export interface TeachingAssignment {
   classLevel: ClassLevel;
-  subjects: (keyof StudentMarks)[];
+  subjects: string[];
 }
 
 export interface User {
@@ -45,13 +45,13 @@ export interface StudentMarks {
   pbi?: number;
   pbi_a?: number;
   pbi_b?: number;
-  hindi: number;
-  eng: number;
-  math: number;
-  sci: number;
-  sst: number;
-  comp: number;
-  phy_edu: number;
+  hindi?: number;
+  eng?: number;
+  math?: number;
+  sci?: number;
+  sst?: number;
+  comp?: number;
+  phy_edu?: number;
   agri?: number;
 }
 
@@ -79,7 +79,7 @@ export enum SubjectType {
 }
 
 export interface SubjectConfig {
-  key: keyof StudentMarks;
+  key: string;
   label: string;
   type: SubjectType;
 }
@@ -95,15 +95,15 @@ export type AttendanceStatus = 'P' | 'A' | 'L';
 export interface AttendanceRecord {
   date: string;
   classLevel: ClassLevel;
-  records: Record<string, AttendanceStatus>; // rollNo -> status
+  records: Record<string, AttendanceStatus>;
 }
 
 export interface HomeworkTask {
   id: string;
   classLevel: ClassLevel;
-  subject: keyof StudentMarks;
+  subject: string;
   taskName: string;
   date: string;
   status: 'Assigned' | 'Checking' | 'Completed';
-  nonSubmitters: string[]; // array of roll numbers
+  nonSubmitters: string[];
 }
