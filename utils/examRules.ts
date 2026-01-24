@@ -1,25 +1,34 @@
-import { ExamType, SubjectType, SubjectConfig, StudentMarks } from '../types';
+import { ExamType, SubjectConfig } from '../types';
 
 /**
  * Generates a standardized lowercase key for marks storage.
- * Ensures that 'Final Exam' + 'Math' becomes 'final exam_math' to match user requirements.
+ * e.g., 'Final Exam' + 'Math' -> 'final exam_math'
  */
-export const getMarkKey = (examType: string, subjectKey: string | number): string => {
-  if (!examType || subjectKey === undefined || subjectKey === null || subjectKey === '') return 'pending_key';
-  return `${examType.toLowerCase()}_${String(subjectKey).toLowerCase()}`;
+export const getMarkKey = (examType: string | undefined, subjectKey: string | number | undefined): string => {
+  if (!examType || subjectKey === undefined || subjectKey === null) return 'unknown_key';
+  return `${String(examType).toLowerCase()}_${String(subjectKey).toLowerCase()}`;
 };
 
-export const getExamMaxMarks = (examType: string, subject: any): number => {
-  const subKey = typeof subject === 'string' ? subject : subject?.key;
+/**
+ * Returns the maximum marks allowed for a specific exam and subject.
+ */
+export const getExamMaxMarks = (examType: string | undefined, subject: SubjectConfig | string | undefined): number => {
+  if (!examType || !subject) return 100;
   
-  // Use strictly defined labels or keys
-  if (examType === 'Bimonthly') return 20;
-  if (examType === 'Term Exam' || examType === 'Preboard') return 80;
-  if (examType === 'Final Exam') {
-    // Special Logic: Punjabi A/B in Final is 75 marks
+  const subKey = typeof subject === 'string' ? subject.toLowerCase() : String(subject.key).toLowerCase();
+  const type = String(examType);
+
+  // Rule 1: Bimonthly tests are always 20
+  if (type === 'Bimonthly') return 20;
+
+  // Rule 2: Term/Preboard exams are always 80
+  if (type === 'Term Exam' || type === 'Preboard') return 80;
+
+  // Rule 3: Final Exam specific logic
+  if (type === 'Final Exam') {
     if (subKey === 'pbi_a' || subKey === 'pbi_b') return 75;
     return 100;
   }
-  
+
   return 100;
 };
