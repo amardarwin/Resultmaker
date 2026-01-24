@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { Student, ClassLevel, CalculatedResult, StudentMarks, ColumnMapping, Role, ExamType } from './types';
+import { Student, ClassLevel, StudentMarks, ColumnMapping, Role, ExamType } from './types';
 import { ALL_CLASSES, GET_SUBJECTS_FOR_CLASS } from './constants';
 import { rankStudents } from './utils/calculations';
 import Dashboard from './components/Dashboard';
@@ -19,7 +19,6 @@ import { getMarkKey } from './utils/examRules';
 const AppContent: React.FC = () => {
   const { user, schoolConfig, logout, isViewRestricted, accessibleClasses } = useAuth();
   
-  // Hardened initial states to prevent white-screen crashes
   const [activeClass, setActiveClass] = useState<ClassLevel>('6');
   const [activeExamType, setActiveExamType] = useState<ExamType>(ExamType.FINAL);
   
@@ -36,7 +35,6 @@ const AppContent: React.FC = () => {
       const parsed = JSON.parse(saved);
       return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
-      console.error("App: Students parse error", e);
       return [];
     }
   });
@@ -55,15 +53,12 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     try {
       localStorage.setItem('school_results_students', JSON.stringify(students));
-    } catch (e) {
-      console.error("App: Persist error", e);
-    }
+    } catch (e) {}
   }, [students]);
 
   const classResults = useMemo(() => {
     const effectiveSort = sortBySubject || dashboardFilter.subject || undefined;
     let results = rankStudents(students, activeClass, activeExamType, effectiveSort as string);
-    
     if (user?.role === Role.STUDENT && user.rollNo) {
       results = results.filter(r => r.rollNo === user.rollNo);
     }
@@ -73,31 +68,12 @@ const AppContent: React.FC = () => {
   if (!schoolConfig?.isSetup) return <SchoolSetup />;
   if (!user) return <LoginScreen />;
 
-  const handleAddOrUpdate = (student: Student) => {
-    setStudents(prev => {
-      const exists = prev.some(s => s.id === student.id);
-      if (exists) return prev.map(s => s.id === student.id ? student : s);
-      return [...prev, student];
-    });
-    setView('sheet');
-    setEditingStudent(null);
-  };
-
   const handleBulkUpdate = (updatedStudents: Student[]) => {
     if (!Array.isArray(updatedStudents)) return;
     setStudents(prev => {
       const otherClasses = prev.filter(s => s.classLevel !== activeClass);
       return [...otherClasses, ...updatedStudents];
     });
-  };
-
-  const handleDelete = (id: string) => {
-    setStudents(prev => prev.filter(s => s.id !== id));
-  };
-
-  const handleEdit = (student: Student) => {
-    setEditingStudent(student);
-    setView('entry');
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -112,12 +88,10 @@ const AppContent: React.FC = () => {
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         const json = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1 });
-
-        if (json.length < 2) return alert('Invalid file format.');
+        if (json.length < 2) return;
 
         const headers = json[0].map(h => String(h || '').trim());
         const rows = json.slice(1).map(row => row.map(v => String(v || '').trim()));
-
         setCsvPreview({ headers, rows });
 
         const subjects = GET_SUBJECTS_FOR_CLASS(activeClass);
@@ -128,23 +102,20 @@ const AppContent: React.FC = () => {
           if (['roll no', 'roll', 'id', 'sr no'].includes(lh)) initialMap.rollNo = h;
           if (['name', 'student', 'student name'].includes(lh)) initialMap.name = h;
           subjects.forEach(s => {
-            const subjectKeyStr = s.key as string;
-            if (s.label.toLowerCase() === lh || subjectKeyStr.toLowerCase() === lh) {
-              initialMap.subjectMapping[subjectKeyStr] = h;
+            if (s.label.toLowerCase() === lh || String(s.key).toLowerCase() === lh) {
+              initialMap.subjectMapping[String(s.key)] = h;
             }
           });
         });
         setMapping(initialMap);
-      } catch (err) {
-        alert('File error.');
-      }
+      } catch (err) {}
     };
     reader.readAsArrayBuffer(file);
     e.target.value = '';
   };
 
   const processImport = () => {
-    if (!csvPreview || !mapping.name || !mapping.rollNo) return alert('Map columns first.');
+    if (!csvPreview || !mapping.name || !mapping.rollNo) return;
     const nameIdx = csvPreview.headers.indexOf(mapping.name);
     const rollIdx = csvPreview.headers.indexOf(mapping.rollNo);
     const targetClass = user?.role === Role.CLASS_INCHARGE ? user.assignedClass! : activeClass;
@@ -168,16 +139,6 @@ const AppContent: React.FC = () => {
     setCsvPreview(null);
   };
 
-  const handleDashboardSubjectClick = (subject: keyof StudentMarks) => {
-    setDashboardFilter(prev => ({ ...prev, subject: prev.subject === subject ? null : subject }));
-    setView('sheet');
-  };
-
-  const handleDashboardBandClick = (band: string) => {
-    setDashboardFilter(prev => ({ ...prev, band: prev.band === band ? null : band }));
-    setView('sheet');
-  };
-
   const renderContent = () => {
     switch (view) {
       case 'dashboard':
@@ -186,22 +147,17 @@ const AppContent: React.FC = () => {
             results={classResults} 
             allStudents={students} 
             className={activeClass} 
-            onClassChange={(cls) => setActiveClass(cls)}
-            onNavigate={(v) => setView(v)}
+            onClassChange={setActiveClass}
+            onNavigate={setView}
             examType={activeExamType}
             activeFilters={dashboardFilter}
-            onSubjectClick={handleDashboardSubjectClick}
-            onBandClick={handleDashboardBandClick}
+            onSubjectClick={(s) => { setDashboardFilter({...dashboardFilter, subject: s}); setView('sheet'); }}
+            onBandClick={(b) => { setDashboardFilter({...dashboardFilter, band: b}); setView('sheet'); }}
             onClearFilters={() => setDashboardFilter({ subject: null, band: null })}
           />
         );
       case 'attendance':
-        return (
-          <AttendanceManager 
-            classLevel={activeClass} 
-            students={students.filter(s => s.classLevel === activeClass)} 
-          />
-        );
+        return <AttendanceManager classLevel={activeClass} students={students.filter(s => s.classLevel === activeClass)} />;
       case 'homework':
         return <HomeworkTracker classLevel={activeClass} />;
       case 'sheet':
@@ -209,8 +165,8 @@ const AppContent: React.FC = () => {
           <ResultTable 
             results={classResults} 
             classLevel={activeClass} 
-            onEdit={handleEdit} 
-            onDelete={handleDelete} 
+            onEdit={(s) => { setEditingStudent(s); setView('entry'); }} 
+            onDelete={(id) => setStudents(prev => prev.filter(s => s.id !== id))} 
             highlightSubject={sortBySubject || dashboardFilter.subject}
             activeFilters={dashboardFilter}
             onClearFilters={() => setDashboardFilter({ subject: null, band: null })}
@@ -221,7 +177,11 @@ const AppContent: React.FC = () => {
       case 'entry':
         return (
           <StudentForm 
-            onAdd={handleAddOrUpdate} 
+            onAdd={(s) => { 
+              setStudents(prev => prev.some(x => x.id === s.id) ? prev.map(x => x.id === s.id ? s : x) : [...prev, s]);
+              setView('sheet');
+              setEditingStudent(null);
+            }} 
             onCancel={() => setView('sheet')} 
             editStudent={editingStudent || undefined} 
             examType={activeExamType}
@@ -243,26 +203,13 @@ const AppContent: React.FC = () => {
       case 'staff':
         return <StaffManagement />;
       default:
-        return (
-          <Dashboard 
-            results={classResults} 
-            allStudents={students} 
-            className={activeClass} 
-            onNavigate={setView} 
-            examType={activeExamType}
-            activeFilters={dashboardFilter}
-            onSubjectClick={handleDashboardSubjectClick}
-            onBandClick={handleDashboardBandClick}
-            onClearFilters={() => setDashboardFilter({ subject: null, band: null })}
-          />
-        );
+        return <Dashboard results={classResults} allStudents={students} className={activeClass} onNavigate={setView} examType={activeExamType} activeFilters={dashboardFilter} onSubjectClick={() => {}} onBandClick={() => {}} onClearFilters={() => {}} />;
     }
   };
 
   return (
     <div className="flex min-h-screen bg-[#f8fafc] text-slate-900 font-sans">
       <Sidebar activeView={view} onViewChange={setView} />
-      
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         <header className="h-20 bg-white border-b border-slate-100 px-8 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-6">
@@ -276,43 +223,25 @@ const AppContent: React.FC = () => {
                 )}
              </div>
           </div>
-
           <div className="flex gap-3">
-            {view !== 'entry-portal' && (user?.role === Role.ADMIN || user?.role === Role.CLASS_INCHARGE) && (
+            {view !== 'entry-portal' && !isViewRestricted && (
               <div className="flex items-center gap-2">
-                 <button 
-                    onClick={() => fileInputRef.current?.click()} 
-                    className="w-10 h-10 flex items-center justify-center rounded-2xl border border-slate-200 text-emerald-600 hover:bg-emerald-50 transition-all shadow-sm"
-                  >
-                   <i className="fa-solid fa-file-excel"></i>
-                 </button>
-                 <button onClick={() => { setEditingStudent(null); setView('entry'); }} className="bg-slate-900 text-white px-6 py-3 rounded-2xl text-[10px] font-black shadow-xl hover:bg-indigo-600 hover:-translate-y-1 transition-all uppercase tracking-widest">
-                   <i className="fa-solid fa-plus-circle mr-2"></i>New Enrollment
-                 </button>
+                 <button onClick={() => fileInputRef.current?.click()} className="w-10 h-10 flex items-center justify-center rounded-2xl border border-slate-200 text-emerald-600 hover:bg-emerald-50 transition-all shadow-sm"><i className="fa-solid fa-file-excel"></i></button>
+                 <button onClick={() => { setEditingStudent(null); setView('entry'); }} className="bg-slate-900 text-white px-6 py-3 rounded-2xl text-[10px] font-black shadow-xl hover:bg-indigo-600 transition-all uppercase tracking-widest">New Enrollment</button>
               </div>
             )}
-            <button onClick={logout} className="w-10 h-10 flex items-center justify-center rounded-2xl bg-white border border-slate-100 text-slate-400 hover:text-red-500 transition-all shadow-sm">
-              <i className="fa-solid fa-power-off"></i>
-            </button>
+            <button onClick={logout} className="w-10 h-10 flex items-center justify-center rounded-2xl bg-white border border-slate-100 text-slate-400 hover:text-red-500 transition-all shadow-sm"><i className="fa-solid fa-power-off"></i></button>
           </div>
         </header>
-
         <main className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-[#f8fafc]">
-           <div className="max-w-7xl mx-auto">
-             {renderContent()}
-           </div>
+           <div className="max-w-7xl mx-auto">{renderContent()}</div>
         </main>
-        
         <input type="file" ref={fileInputRef} onChange={handleFileSelect} accept=".csv,.xlsx,.xls" className="hidden" />
-
         {csvPreview && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-4">
-            <div className="bg-white rounded-[40px] w-full max-w-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-300">
+            <div className="bg-white rounded-[40px] w-full max-w-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
               <div className="p-8 bg-indigo-600 text-white flex justify-between items-center">
-                <div>
-                  <h3 className="text-2xl font-black tracking-tight">Data Wizard</h3>
-                  <p className="text-xs text-indigo-100 font-bold uppercase mt-1">Importing to Class {activeClass}</p>
-                </div>
+                <h3 className="text-2xl font-black tracking-tight">Data Wizard</h3>
                 <button onClick={() => setCsvPreview(null)} className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center"><i className="fa-solid fa-xmark"></i></button>
               </div>
               <div className="p-8 overflow-y-auto space-y-8 custom-scrollbar">
@@ -332,32 +261,10 @@ const AppContent: React.FC = () => {
                     </select>
                   </div>
                 </div>
-                
-                <div className="space-y-4">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Subject Mapping</span>
-                  <div className="grid grid-cols-2 gap-4">
-                    {GET_SUBJECTS_FOR_CLASS(activeClass).map(sub => (
-                      <div key={sub.key}>
-                        <label className="text-[10px] font-black text-slate-500 uppercase mb-1 block truncate">{sub.label}</label>
-                        <select 
-                          value={mapping.subjectMapping[sub.key] || ''} 
-                          onChange={e => setMapping({
-                            ...mapping, 
-                            subjectMapping: { ...mapping.subjectMapping, [sub.key]: e.target.value }
-                          })}
-                          className="w-full p-2 bg-white border border-slate-100 rounded-lg text-xs font-bold"
-                        >
-                          <option value="">-- Skip --</option>
-                          {csvPreview.headers.map(h => <option key={h} value={h}>{h}</option>)}
-                        </select>
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </div>
               <div className="p-8 border-t flex justify-end gap-3 bg-slate-50">
                 <button onClick={() => setCsvPreview(null)} className="px-8 font-black text-slate-400 uppercase text-xs">Cancel</button>
-                <button onClick={processImport} className="px-12 py-4 bg-indigo-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-xl shadow-indigo-100">Finalize Import</button>
+                <button onClick={processImport} className="px-12 py-4 bg-indigo-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-xl">Finalize Import</button>
               </div>
             </div>
           </div>
@@ -368,9 +275,7 @@ const AppContent: React.FC = () => {
 };
 
 const App: React.FC = () => (
-  <AuthProvider>
-    <AppContent />
-  </AuthProvider>
+  <AuthProvider><AppContent /></AuthProvider>
 );
 
 export default App;
