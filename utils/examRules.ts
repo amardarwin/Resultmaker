@@ -28,7 +28,8 @@ export const getExamMaxMarks = (examType: string | undefined, subject: SubjectCo
 
   // Rule 3: Final Exam specific logic
   if (type === 'Final Exam') {
-    if (subKey === 'pbi_a' || subKey === 'pbi_b') return 75;
+    // Punjabi A and B specifically are 75 in finals
+    if (subKey === 'pbi_a' || subKey === 'pbi_b' || subKey === 'punjabi a' || subKey === 'punjabi b') return 75;
     return 100;
   }
 
