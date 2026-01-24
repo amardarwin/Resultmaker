@@ -7,6 +7,13 @@ export enum Role {
   STUDENT = 'STUDENT'
 }
 
+export enum ExamType {
+  BIMONTHLY = 'Bimonthly',
+  TERM = 'Term Exam',
+  PREBOARD = 'Preboard',
+  FINAL = 'Final Exam'
+}
+
 export interface TeachingAssignment {
   classLevel: ClassLevel;
   subjects: (keyof StudentMarks)[];
@@ -18,7 +25,7 @@ export interface User {
   name: string;
   role: Role;
   assignedClass?: ClassLevel;
-  teachingAssignments?: TeachingAssignment[]; // Replaced assignedSubjects
+  teachingAssignments?: TeachingAssignment[];
   rollNo?: string;
 }
 
@@ -34,6 +41,7 @@ export interface SchoolConfig {
 }
 
 export interface StudentMarks {
+  [key: string]: number | undefined;
   pbi?: number;
   pbi_a?: number;
   pbi_b?: number;
@@ -51,8 +59,9 @@ export interface Student {
   id: string;
   rollNo: string;
   name: string;
+  fatherName?: string;
   classLevel: ClassLevel;
-  marks: StudentMarks;
+  marks: Record<string, number>;
   manualTotal?: number;
   password?: string;
 }
@@ -79,4 +88,22 @@ export interface ColumnMapping {
   rollNo: string;
   name: string;
   subjectMapping: Record<string, string>;
+}
+
+export type AttendanceStatus = 'P' | 'A' | 'L';
+
+export interface AttendanceRecord {
+  date: string;
+  classLevel: ClassLevel;
+  records: Record<string, AttendanceStatus>; // rollNo -> status
+}
+
+export interface HomeworkTask {
+  id: string;
+  classLevel: ClassLevel;
+  subject: keyof StudentMarks;
+  taskName: string;
+  date: string;
+  status: 'Assigned' | 'Checking' | 'Completed';
+  nonSubmitters: string[]; // array of roll numbers
 }
