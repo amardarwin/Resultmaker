@@ -35,6 +35,7 @@ const AppContent: React.FC = () => {
       const parsed = JSON.parse(saved);
       return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
+      console.error("Failed to load students from localStorage", e);
       return [];
     }
   });
@@ -47,22 +48,35 @@ const AppContent: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (user?.assignedClass) setActiveClass(user.assignedClass);
+    if (user?.assignedClass && ALL_CLASSES.includes(user.assignedClass)) {
+      setActiveClass(user.assignedClass);
+    }
   }, [user]);
 
   useEffect(() => {
     try {
-      localStorage.setItem('school_results_students', JSON.stringify(students));
-    } catch (e) {}
+      if (Array.isArray(students)) {
+        localStorage.setItem('school_results_students', JSON.stringify(students));
+      }
+    } catch (e) {
+      console.error("Failed to save students to localStorage", e);
+    }
   }, [students]);
 
   const classResults = useMemo(() => {
-    const effectiveSort = sortBySubject || dashboardFilter.subject || undefined;
-    let results = rankStudents(students, activeClass, activeExamType, effectiveSort as string);
-    if (user?.role === Role.STUDENT && user.rollNo) {
-      results = results.filter(r => r.rollNo === user.rollNo);
+    try {
+      const effectiveSort = sortBySubject || dashboardFilter.subject || undefined;
+      const studentList = Array.isArray(students) ? students : [];
+      let results = rankStudents(studentList, activeClass, activeExamType, effectiveSort as string);
+      
+      if (user?.role === Role.STUDENT && user.rollNo) {
+        results = results.filter(r => r.rollNo === user.rollNo);
+      }
+      return results || [];
+    } catch (e) {
+      console.error("Ranking Calculation Error", e);
+      return [];
     }
-    return results;
   }, [students, activeClass, activeExamType, sortBySubject, dashboardFilter.subject, user]);
 
   if (!schoolConfig?.isSetup) return <SchoolSetup />;
@@ -71,7 +85,8 @@ const AppContent: React.FC = () => {
   const handleBulkUpdate = (updatedStudents: Student[]) => {
     if (!Array.isArray(updatedStudents)) return;
     setStudents(prev => {
-      const otherClasses = prev.filter(s => s.classLevel !== activeClass);
+      const prevList = Array.isArray(prev) ? prev : [];
+      const otherClasses = prevList.filter(s => s && s.classLevel !== activeClass);
       return [...otherClasses, ...updatedStudents];
     });
   };
@@ -88,7 +103,7 @@ const AppContent: React.FC = () => {
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         const json = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1 });
-        if (json.length < 2) return;
+        if (json.length < 2) return alert("File format invalid. No data rows found.");
 
         const headers = json[0].map(h => String(h || '').trim());
         const rows = json.slice(1).map(row => row.map(v => String(v || '').trim()));
@@ -108,14 +123,16 @@ const AppContent: React.FC = () => {
           });
         });
         setMapping(initialMap);
-      } catch (err) {}
+      } catch (err) {
+        alert("Excel parse error.");
+      }
     };
     reader.readAsArrayBuffer(file);
     e.target.value = '';
   };
 
   const processImport = () => {
-    if (!csvPreview || !mapping.name || !mapping.rollNo) return;
+    if (!csvPreview || !mapping.name || !mapping.rollNo) return alert("Mapping incomplete.");
     const nameIdx = csvPreview.headers.indexOf(mapping.name);
     const rollIdx = csvPreview.headers.indexOf(mapping.rollNo);
     const targetClass = user?.role === Role.CLASS_INCHARGE ? user.assignedClass! : activeClass;
@@ -125,7 +142,9 @@ const AppContent: React.FC = () => {
       Object.entries(mapping.subjectMapping).forEach(([key, header]) => {
         const hIdx = csvPreview.headers.indexOf(header);
         const mKey = getMarkKey(activeExamType, key);
-        studentMarks[mKey] = parseInt(row[hIdx]) || 0;
+        if (mKey !== 'invalid_registry_key') {
+          studentMarks[mKey] = parseInt(row[hIdx]) || 0;
+        }
       });
       return {
         id: `imp-${Date.now()}-${idx}`,
@@ -247,14 +266,14 @@ const AppContent: React.FC = () => {
               <div className="p-8 overflow-y-auto space-y-8 custom-scrollbar">
                 <div className="grid grid-cols-2 gap-6">
                   <div>
-                    <label className="text-[10px] font-black uppercase text-slate-400 mb-2 block">Roll Number Header</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">Roll Number Header</label>
                     <select value={mapping.rollNo} onChange={e => setMapping({...mapping, rollNo: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold">
                       <option value="">-- Select --</option>
                       {csvPreview.headers.map(h => <option key={h} value={h}>{h}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-[10px] font-black uppercase text-slate-400 mb-2 block">Name Header</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">Name Header</label>
                     <select value={mapping.name} onChange={e => setMapping({...mapping, name: e.target.value})} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold">
                       <option value="">-- Select --</option>
                       {csvPreview.headers.map(h => <option key={h} value={h}>{h}</option>)}
