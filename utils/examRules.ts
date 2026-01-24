@@ -5,7 +5,9 @@ import { ExamType, SubjectConfig } from '../types';
  * e.g., 'Final Exam' + 'Math' -> 'final exam_math'
  */
 export const getMarkKey = (examType: string | undefined, subjectKey: string | number | undefined): string => {
-  if (!examType || subjectKey === undefined || subjectKey === null) return 'unknown_key';
+  if (!examType || !subjectKey || String(subjectKey).trim() === '') {
+    return 'invalid_registry_key';
+  }
   return `${String(examType).toLowerCase()}_${String(subjectKey).toLowerCase()}`;
 };
 
