@@ -15,30 +15,37 @@ const SubjectEntryForm: React.FC<any> = ({
   // 1. Local Configuration & State
   const [selectedExam, setSelectedExam] = useState<string>('Final Exam');
   
-  // Define subjects based on class level internally
+  /**
+   * getSubjects - Requirement: Dynamic list based on Class
+   * Condition 1: Middle (6, 7, 8)
+   * Condition 2: High (9, 10)
+   */
   const getSubjects = (cls: string) => {
     const isMiddle = ['6', '7', '8'].includes(cls);
     if (isMiddle) {
       return [
-        { key: 'pbi', label: 'Punjabi' },
-        { key: 'hindi', label: 'Hindi' },
-        { key: 'eng', label: 'English' },
-        { key: 'math', label: 'Math' },
+        { key: 'math', label: 'Mathematics' },
         { key: 'sci', label: 'Science' },
-        { key: 'sst', label: 'SST' },
-        { key: 'comp', label: 'Comp' },
-        { key: 'phy_edu', label: 'Phy Edu' },
+        { key: 'eng', label: 'English' },
+        { key: 'sst', label: 'Social Studies' },
+        { key: 'hindi', label: 'Hindi' },
+        { key: 'pbi', label: 'Punjabi' },
+        { key: 'comp', label: 'Computer Science' },
+        { key: 'phy_edu', label: 'Physical Education' },
+        { key: 'agri', label: 'Agriculture' },
       ];
     }
+    // High School (9th & 10th)
     return [
+      { key: 'math', label: 'Mathematics' },
+      { key: 'sci', label: 'Science' },
+      { key: 'eng', label: 'English' },
+      { key: 'sst', label: 'Social Studies' },
+      { key: 'hindi', label: 'Hindi' },
       { key: 'pbi_a', label: 'Punjabi A' },
       { key: 'pbi_b', label: 'Punjabi B' },
-      { key: 'hindi', label: 'Hindi' },
-      { key: 'eng', label: 'English' },
-      { key: 'math', label: 'Math' },
-      { key: 'sci', label: 'Science' },
-      { key: 'sst', label: 'SST' },
-      { key: 'comp', label: 'Comp' },
+      { key: 'comp', label: 'Computer Science' },
+      { key: 'phy_edu', label: 'Physical Education' },
     ];
   };
 
@@ -46,7 +53,7 @@ const SubjectEntryForm: React.FC<any> = ({
   const [selectedSubKey, setSelectedSubKey] = useState<string>(subjects[0]?.key || '');
   const [localMarks, setLocalMarks] = useState<Record<string, string>>({});
 
-  // 2. Max Marks Logic (Requirement 2 & 3)
+  // 2. Max Marks Logic (Requirement: Keep 75 marks for Punjabi A/B in Finals)
   const getMaxMarks = (exam: string, subKey: string) => {
     if (exam === 'Bimonthly') return 20;
     if (exam === 'Term Exam' || exam === 'Preboard') return 80;
@@ -116,7 +123,7 @@ const SubjectEntryForm: React.FC<any> = ({
     alert(`✅ Success: Registry updated for ${selectedExam} - ${selectedSubKey.toUpperCase()}.`);
   };
 
-  // 4. Download Award List (New Requirement)
+  // 4. Download Award List Feature (Preserved)
   const handleDownloadAwardList = () => {
     if (students.length === 0) {
       alert("No student data available to download.");
@@ -177,7 +184,7 @@ const SubjectEntryForm: React.FC<any> = ({
               <select 
                 value={selectedSubKey} 
                 onChange={(e) => setSelectedSubKey(e.target.value)}
-                className="bg-white text-slate-950 px-5 py-2.5 rounded-2xl text-[11px] font-black outline-none shadow-xl"
+                className="bg-white text-slate-950 px-5 py-2.5 rounded-2xl text-[11px] font-black outline-none shadow-xl min-w-[180px]"
               >
                 {subjects.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
               </select>
