@@ -2,8 +2,11 @@ import React, { useState, useMemo } from 'react';
 
 /**
  * ResultTable - STANDALONE VERSION
- * Features: Dynamic Exam selection, Prefix-based data fetching, 
- * and localized max-marks logic.
+ * Features: 
+ * - Dynamic Exam selection.
+ * - Main Subjects (Calculated): Math, Sci, Eng, SST, Hindi, Pbi.
+ * - Grading Subjects (Display only): Computer, Phy. Edu., Agriculture.
+ * - Prefix-based data fetching.
  */
 const ResultTable: React.FC<any> = ({ 
   results = [], 
@@ -15,8 +18,9 @@ const ResultTable: React.FC<any> = ({
   const [examType, setExamType] = useState<string>('Final Exam');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // 2. Localized Subject Configuration (Matches Entry Form logic)
-  const subjects = useMemo(() => {
+  // 2. Localized Subject Configuration
+  // Main Subjects: Used for Display AND Calculations
+  const mainSubjects = useMemo(() => {
     const isMiddle = ['6', '7', '8'].includes(classLevel);
     if (isMiddle) {
       return [
@@ -39,6 +43,21 @@ const ResultTable: React.FC<any> = ({
     ];
   }, [classLevel]);
 
+  // Grading Subjects: Display only, NO calculation
+  const gradingSubjects = useMemo(() => {
+    const isMiddle = ['6', '7', '8'].includes(classLevel);
+    const base = [
+      { key: 'comp', label: 'Comp' },
+      { key: 'phy_edu', label: 'Phy Edu' },
+    ];
+    if (isMiddle) {
+      return [...base, { key: 'agri', label: 'Agri' }];
+    }
+    return base;
+  }, [classLevel]);
+
+  const allVisibleSubjects = useMemo(() => [...mainSubjects, ...gradingSubjects], [mainSubjects, gradingSubjects]);
+
   // 3. Calculation Helpers
   const getMaxMarks = (exam: string, subKey: string) => {
     if (exam === 'Bimonthly') return 20;
@@ -54,7 +73,7 @@ const ResultTable: React.FC<any> = ({
   };
 
   const getStorageKey = (exam: string, subKey: string) => {
-    const prefix = exam.toLowerCase().split(' ')[0]; // 'final', 'term', etc.
+    const prefix = exam.toLowerCase().split(' ')[0];
     return `${prefix}_${subKey.toLowerCase()}`;
   };
 
@@ -73,11 +92,16 @@ const ResultTable: React.FC<any> = ({
         
         const marksMapping: Record<string, number> = {};
         
-        subjects.forEach(sub => {
+        // Process ALL subjects for display mapping
+        allVisibleSubjects.forEach(sub => {
           const key = getStorageKey(examType, sub.key);
           const score = student.marks?.[key] || 0;
           marksMapping[sub.key] = score;
-          
+        });
+
+        // ONLY use Main Subjects for calculations (Total/Percentage)
+        mainSubjects.forEach(sub => {
+          const score = marksMapping[sub.key] || 0;
           obtained += score;
           totalMax += getMaxMarks(examType, sub.key);
         });
@@ -93,8 +117,8 @@ const ResultTable: React.FC<any> = ({
           isPass: percentage >= 33
         };
       })
-      .sort((a, b) => b.calculatedObtained - a.calculatedObtained); // Automatic Ranking Sort
-  }, [results, examType, subjects, searchTerm]);
+      .sort((a, b) => b.calculatedObtained - a.calculatedObtained);
+  }, [results, examType, mainSubjects, allVisibleSubjects, searchTerm]);
 
   // 5. Export to Excel (CSV) logic
   const handleDownloadExcel = () => {
@@ -108,9 +132,9 @@ const ResultTable: React.FC<any> = ({
       'Rank',
       'Roll No',
       'Student Name',
-      ...subjects.map(s => s.label),
-      'Total Obtained',
-      'Max Marks',
+      ...allVisibleSubjects.map(s => s.label),
+      'Total Obtained (Main)',
+      'Max Marks (Main)',
       'Percentage (%)',
       'Status'
     ];
@@ -120,7 +144,7 @@ const ResultTable: React.FC<any> = ({
       idx + 1,
       res.rollNo,
       `"${res.name.replace(/"/g, '""')}"`,
-      ...subjects.map(s => res.displayedMarks[s.key] ?? 0),
+      ...allVisibleSubjects.map(s => res.displayedMarks[s.key] ?? 0),
       res.calculatedObtained,
       res.calculatedMax,
       res.calculatedPercentage,
@@ -195,7 +219,9 @@ const ResultTable: React.FC<any> = ({
                 <th className="px-8 py-6 sticky left-0 bg-slate-900 z-10">Rank</th>
                 <th className="px-8 py-6 sticky left-[80px] bg-slate-900 z-10">Roll No</th>
                 <th className="px-8 py-6 min-w-[200px]">Student Identity</th>
-                {subjects.map(sub => (
+                
+                {/* Main Subjects Headers */}
+                {mainSubjects.map(sub => (
                   <th key={sub.key} className="px-4 py-6 text-center whitespace-nowrap">
                     <div className="flex flex-col">
                       <span>{sub.label}</span>
@@ -203,6 +229,17 @@ const ResultTable: React.FC<any> = ({
                     </div>
                   </th>
                 ))}
+
+                {/* Grading Subjects Headers */}
+                {gradingSubjects.map(sub => (
+                  <th key={sub.key} className="px-4 py-6 text-center whitespace-nowrap bg-slate-800">
+                    <div className="flex flex-col">
+                      <span>{sub.label}</span>
+                      <span className="text-[7px] opacity-50 font-black text-amber-400">Grading</span>
+                    </div>
+                  </th>
+                ))}
+
                 <th className="px-6 py-6 text-center bg-indigo-800">Total</th>
                 <th className="px-6 py-6 text-center bg-indigo-700">%age</th>
                 <th className="px-6 py-6 text-center bg-slate-800">Status</th>
@@ -212,7 +249,7 @@ const ResultTable: React.FC<any> = ({
             <tbody className="divide-y divide-slate-100">
               {processedData.length === 0 ? (
                 <tr>
-                  <td colSpan={subjects.length + 7} className="px-8 py-32 text-center text-slate-300 font-black uppercase tracking-widest text-xs">
+                  <td colSpan={allVisibleSubjects.length + 7} className="px-8 py-32 text-center text-slate-300 font-black uppercase tracking-widest text-xs">
                     No results found for {examType}
                   </td>
                 </tr>
@@ -235,11 +272,14 @@ const ResultTable: React.FC<any> = ({
                     <td className="px-8 py-5 font-black text-slate-800">
                       {res.name}
                     </td>
-                    {subjects.map(sub => (
-                      <td key={sub.key} className="px-4 py-5 text-center font-bold text-slate-600">
+
+                    {/* All Subject Marks (Main + Grading) */}
+                    {allVisibleSubjects.map(sub => (
+                      <td key={sub.key} className={`px-4 py-5 text-center font-bold ${gradingSubjects.some(g => g.key === sub.key) ? 'text-slate-400 bg-slate-50/50' : 'text-slate-600'}`}>
                         {res.displayedMarks[sub.key] ?? '-'}
                       </td>
                     ))}
+
                     <td className="px-6 py-5 text-center font-black text-indigo-700 bg-indigo-50/30">
                       {res.calculatedObtained}
                     </td>
