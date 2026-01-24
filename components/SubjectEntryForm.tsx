@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Student, ClassLevel, User, Role, ExamType } from '../types';
+import { Student, ClassLevel, User, Role, ExamType, SubjectConfig } from '../types';
 import { GET_SUBJECTS_FOR_CLASS } from '../constants';
 import { getExamMaxMarks, getMarkKey } from '../utils/examRules';
+import { useAuth } from '../contexts/AuthContext';
 
 interface SubjectEntryFormProps {
   classLevel: ClassLevel;
@@ -24,34 +25,36 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({
   onExamTypeChange,
   currentUser 
 }) => {
+  const { canEditSubject } = useAuth();
 
-  // 1. Load subjects for current class schema
   const availableSubjects = useMemo(() => {
     try {
-      return GET_SUBJECTS_FOR_CLASS(classLevel) || [];
+      const raw = GET_SUBJECTS_FOR_CLASS(classLevel) || [];
+      return raw.filter(sub => canEditSubject(sub.key, classLevel));
     } catch (e) {
+      console.error("Schema Resolution Failure", e);
       return [];
     }
-  }, [classLevel]);
+  }, [classLevel, canEditSubject]);
 
-  // 2. Initialize subject selection safely
-  const [selectedSubKey, setSelectedSubKey] = useState<string>('');
+  const [selectedSubKey, setSelectedSubKey] = useState<string>(() => {
+    return availableSubjects.length > 0 ? String(availableSubjects[0].key) : '';
+  });
+  
   const [localMarks, setLocalMarks] = useState<Record<string, string>>({});
   const [saveStatus, setSaveStatus] = useState<Record<string, 'Stored' | 'Pending'>>({});
 
-  // 3. EFFECT: Safe Subject Synchronization
-  // This is the critical fix for White Screens. It ensures a valid subject is always selected.
   useEffect(() => {
-    if (!availableSubjects || availableSubjects.length === 0) return;
-    
-    // If current selection is invalid for this class, reset to the first subject
-    const isValid = availableSubjects.some(s => String(s.key) === selectedSubKey);
-    if (!isValid) {
-      setSelectedSubKey(String(availableSubjects[0].key));
+    if (availableSubjects.length > 0) {
+      const isValid = availableSubjects.some(s => String(s.key) === selectedSubKey);
+      if (!isValid) {
+        setSelectedSubKey(String(availableSubjects[0].key));
+      }
+    } else {
+      setSelectedSubKey('');
     }
   }, [availableSubjects, selectedSubKey]);
 
-  // 4. Derived Schema values (Highly defensive)
   const currentSubjectConfig = useMemo(() => {
     return availableSubjects.find(s => String(s.key) === selectedSubKey);
   }, [availableSubjects, selectedSubKey]);
@@ -64,16 +67,16 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({
     return getMarkKey(examType, selectedSubKey);
   }, [examType, selectedSubKey]);
 
-  // 5. EFFECT: Data hydration for the table
   useEffect(() => {
-    if (!storageKey || storageKey === 'unknown_key') return;
+    if (!storageKey || storageKey === 'invalid_registry_key') return;
     
     const marks: Record<string, string> = {};
     const statuses: Record<string, 'Stored' | 'Pending'> = {};
+    const studentList = Array.isArray(students) ? students : [];
     
-    students.forEach(s => {
+    studentList.forEach(s => {
       if (s && s.id) {
-        const val = s.marks?.[storageKey];
+        const val = s.marks ? s.marks[storageKey] : undefined;
         marks[s.id] = (val !== undefined && val !== null) ? String(val) : '';
         statuses[s.id] = 'Stored';
       }
@@ -83,7 +86,6 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({
     setSaveStatus(statuses);
   }, [storageKey, students]);
 
-  // 6. Interaction Handlers
   const handleInputChange = (studentId: string, value: string) => {
     if (!studentId) return;
     if (value !== '' && !/^\d+$/.test(value)) return;
@@ -93,19 +95,21 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({
 
   const handleCommit = () => {
     if (!currentUser || currentUser.role === Role.STUDENT) return;
+    if (!currentSubjectConfig) return alert('No active subject selected.');
 
-    // Validate marks
-    const violations = students.filter(s => {
+    const studentList = Array.isArray(students) ? students : [];
+    
+    const violations = studentList.filter(s => {
       const val = parseInt(localMarks[s.id] || '0', 10);
       return val > currentMax;
     });
 
     if (violations.length > 0) {
-      alert(`⚠️ Validation Error: Some entries exceed the maximum allowed marks (${currentMax}).`);
+      alert(`⚠️ Registry Violation: Entries exceed max allowed (${currentMax}) for ${currentSubjectConfig.label}.`);
       return;
     }
 
-    const updatedStudents = students.map(s => ({
+    const updatedStudents = studentList.map(s => ({
       ...s,
       marks: {
         ...(s.marks || {}),
@@ -114,29 +118,37 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({
     }));
 
     onSave(updatedStudents);
-    alert(`✅ ${currentSubjectConfig?.label || 'Subject'} marks synced successfully.`);
+    alert(`✅ Data synced for ${currentSubjectConfig.label}.`);
     
-    // Set all to stored
     const resetStatus: Record<string, 'Stored' | 'Pending'> = {};
-    students.forEach(s => resetStatus[s.id] = 'Stored');
+    studentList.forEach(s => resetStatus[s.id] = 'Stored');
     setSaveStatus(resetStatus);
   };
 
-  if (!availableSubjects || availableSubjects.length === 0) {
-    return <div className="p-20 text-center bg-white rounded-3xl shadow-xl">Loading Registry...</div>;
+  if (availableSubjects.length === 0) {
+    return (
+      <div className="p-20 text-center bg-white rounded-[40px] shadow-2xl border border-slate-100">
+        <div className="w-20 h-20 bg-slate-100 rounded-3xl mx-auto flex items-center justify-center text-slate-400 mb-6">
+          <i className="fa-solid fa-lock text-3xl"></i>
+        </div>
+        <h3 className="text-xl font-black text-slate-800 uppercase tracking-widest">Unauthorized Access</h3>
+        <p className="text-slate-400 mt-2 max-w-sm mx-auto font-medium">No teaching assignments found for Class {classLevel}.</p>
+        <button onClick={onCancel} className="mt-8 px-10 py-3 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest">Return to Dashboard</button>
+      </div>
+    );
   }
 
   return (
-    <div className="bg-white rounded-[40px] shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-500">
+    <div className="bg-white rounded-[40px] shadow-2xl border border-slate-100 overflow-hidden">
       <div className="p-8 bg-gradient-to-br from-indigo-900 to-slate-900 text-white">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
           <div className="flex items-center gap-6">
             <div className="w-16 h-16 bg-white/10 rounded-3xl flex items-center justify-center backdrop-blur-md border border-white/20 shadow-2xl">
-              <i className="fa-solid fa-database text-3xl"></i>
+              <i className="fa-solid fa-database text-3xl text-indigo-300"></i>
             </div>
             <div>
-              <h2 className="text-3xl font-black">Registry Portal</h2>
-              <p className="text-indigo-300 text-[10px] font-black uppercase tracking-[0.3em] mt-3">Staff Authorization Level 1</p>
+              <h2 className="text-3xl font-black">Registry Entry Portal</h2>
+              <p className="text-indigo-300 text-[10px] font-black uppercase tracking-[0.3em] mt-3">Active Session • {currentUser?.name || 'Administrator'}</p>
             </div>
           </div>
 
@@ -187,49 +199,55 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({
           <thead className="sticky top-0 bg-white/95 backdrop-blur-md z-30 shadow-sm">
             <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
               <th className="px-10 py-6 border-b">Roll No</th>
-              <th className="px-10 py-6 border-b">Name</th>
+              <th className="px-10 py-6 border-b">Student Identity</th>
               <th className="px-10 py-6 border-b text-center">Marks Input</th>
-              <th className="px-10 py-6 border-b text-center">Status</th>
+              <th className="px-10 py-6 border-b text-center">Registry Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {students.map((s, idx) => (
-              <tr key={s.id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/20'} hover:bg-indigo-50/50 transition-all`}>
-                <td className="px-10 py-5 font-black text-slate-500">{s.rollNo}</td>
-                <td className="px-10 py-5 font-black text-slate-800">{s.name}</td>
-                <td className="px-10 py-5">
-                  <div className="flex justify-center">
-                    <input 
-                      type="text"
-                      value={localMarks[s.id] || ''}
-                      onChange={(e) => handleInputChange(s.id, e.target.value)}
-                      className="w-40 p-4 text-center rounded-2xl font-black text-2xl shadow-inner border-2 border-slate-100 focus:border-indigo-600 outline-none"
-                    />
-                  </div>
-                </td>
-                <td className="px-10 py-5">
-                  <div className="flex justify-center">
-                    <span className={`px-5 py-2 rounded-full text-[9px] font-black uppercase tracking-widest border ${
-                      saveStatus[s.id] === 'Pending' ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'
-                    }`}>
-                      {saveStatus[s.id] === 'Pending' ? 'Modified' : 'Synced'}
-                    </span>
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {students.length === 0 ? (
+              <tr><td colSpan={4} className="px-10 py-32 text-center text-slate-300 font-black uppercase tracking-[0.3em] text-xs">No records for Class {classLevel}</td></tr>
+            ) : (
+              students.map((s, idx) => (
+                <tr key={s.id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/20'} hover:bg-indigo-50/50 transition-all`}>
+                  <td className="px-10 py-5 font-black text-slate-500">{s.rollNo}</td>
+                  <td className="px-10 py-5 font-black text-slate-800">{s.name}</td>
+                  <td className="px-10 py-5">
+                    <div className="flex justify-center">
+                      <input 
+                        type="text"
+                        value={localMarks[s.id] || ''}
+                        onChange={(e) => handleInputChange(s.id, e.target.value)}
+                        className={`w-40 p-4 text-center rounded-2xl font-black text-2xl shadow-inner border-2 transition-all outline-none ${
+                          parseInt(localMarks[s.id] || '0') > currentMax ? 'border-red-400 bg-red-50 text-red-600' : 'border-slate-100 bg-white text-slate-950 focus:border-indigo-600'
+                        }`}
+                      />
+                    </div>
+                  </td>
+                  <td className="px-10 py-5">
+                    <div className="flex justify-center">
+                      <span className={`px-5 py-2 rounded-full text-[9px] font-black uppercase tracking-widest border ${
+                        saveStatus[s.id] === 'Pending' ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                      }`}>
+                        {saveStatus[s.id] === 'Pending' ? 'Modified' : 'Synced'}
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
 
       <div className="p-10 bg-slate-50 border-t flex flex-col sm:flex-row items-center justify-between gap-8">
         <div className="flex items-center gap-5">
-           <div className="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center text-indigo-600 text-xl"><i className="fa-solid fa-cloud-arrow-up"></i></div>
-           <span className="text-sm font-black text-slate-800">{students.length} Records Loaded</span>
+           <div className="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center text-indigo-600 text-xl shadow-inner"><i className="fa-solid fa-cloud-arrow-up"></i></div>
+           <span className="text-sm font-black text-slate-800">{students.length} Total Records</span>
         </div>
         <div className="flex items-center gap-4 w-full sm:w-auto">
           <button onClick={onCancel} className="flex-1 px-10 py-5 text-[11px] font-black text-slate-400 uppercase tracking-widest">Cancel</button>
-          <button onClick={handleCommit} className="flex-1 px-16 py-5 bg-indigo-600 text-white font-black rounded-3xl text-[11px] uppercase tracking-widest shadow-xl hover:bg-slate-950 transition-all">Commit Sync</button>
+          <button onClick={handleCommit} className="flex-1 px-16 py-5 bg-indigo-600 text-white font-black rounded-3xl text-[11px] uppercase tracking-widest shadow-2xl">Commit Changes</button>
         </div>
       </div>
     </div>
