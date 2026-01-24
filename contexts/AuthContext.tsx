@@ -89,7 +89,7 @@ export const AuthProvider = ({ children }: any) => {
         if (a && a.classLevel) classes.add(a.classLevel);
       });
     }
-    return Array.from(classes);
+    return Array.from(classes) as ClassLevel[];
   }, [user]);
 
   const value = {
@@ -101,7 +101,7 @@ export const AuthProvider = ({ children }: any) => {
       if (!user) return false;
       if (user.role === Role.ADMIN) return true;
       if (user.role === Role.CLASS_INCHARGE && user.assignedClass === cls) return true;
-      return user.teachingAssignments?.find((a: any) => a.classLevel === cls)?.subjects?.includes(sub);
+      return user.teachingAssignments?.some((a: any) => a.classLevel === cls && a.subjects && a.subjects.includes(sub)) || false;
     }
   };
 
