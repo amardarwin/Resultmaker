@@ -17,7 +17,9 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { getMarkKey } from './utils/examRules';
 
 const AppContent: React.FC = () => {
-  const { user, schoolConfig, logout, isViewRestricted, canEditStudent, accessibleClasses } = useAuth();
+  const { user, schoolConfig, logout, isViewRestricted, accessibleClasses } = useAuth();
+  
+  // Hardened initial states to prevent white-screen crashes
   const [activeClass, setActiveClass] = useState<ClassLevel>('6');
   const [activeExamType, setActiveExamType] = useState<ExamType>(ExamType.FINAL);
   
@@ -30,15 +32,18 @@ const AppContent: React.FC = () => {
   const [students, setStudents] = useState<Student[]>(() => {
     try {
       const saved = localStorage.getItem('school_results_students');
-      return saved ? JSON.parse(saved) : [];
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
+      console.error("App: Students parse error", e);
       return [];
     }
   });
+  
   const [view, setView] = useState<string>('dashboard');
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
 
-  // Import States
   const [csvPreview, setCsvPreview] = useState<{ headers: string[], rows: string[][] } | null>(null);
   const [mapping, setMapping] = useState<ColumnMapping>({ rollNo: '', name: '', subjectMapping: {} });
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -48,7 +53,11 @@ const AppContent: React.FC = () => {
   }, [user]);
 
   useEffect(() => {
-    localStorage.setItem('school_results_students', JSON.stringify(students));
+    try {
+      localStorage.setItem('school_results_students', JSON.stringify(students));
+    } catch (e) {
+      console.error("App: Persist error", e);
+    }
   }, [students]);
 
   const classResults = useMemo(() => {
@@ -65,21 +74,21 @@ const AppContent: React.FC = () => {
   if (!user) return <LoginScreen />;
 
   const handleAddOrUpdate = (student: Student) => {
-    if (editingStudent) {
-      setStudents(prev => prev.map(s => s.id === student.id ? student : s));
-    } else {
-      setStudents(prev => [...prev, student]);
-    }
+    setStudents(prev => {
+      const exists = prev.some(s => s.id === student.id);
+      if (exists) return prev.map(s => s.id === student.id ? student : s);
+      return [...prev, student];
+    });
     setView('sheet');
     setEditingStudent(null);
   };
 
   const handleBulkUpdate = (updatedStudents: Student[]) => {
+    if (!Array.isArray(updatedStudents)) return;
     setStudents(prev => {
       const otherClasses = prev.filter(s => s.classLevel !== activeClass);
       return [...otherClasses, ...updatedStudents];
     });
-    // Keep user in the entry portal if they were there, or navigate back based on UX
   };
 
   const handleDelete = (id: string) => {
@@ -259,7 +268,7 @@ const AppContent: React.FC = () => {
           <div className="flex items-center gap-6">
              <div className="flex gap-1.5 bg-slate-100 p-1.5 rounded-2xl">
                 {isViewRestricted ? (
-                  <span className="px-6 py-2 rounded-xl text-xs font-black bg-indigo-600 text-white shadow-lg">CLASS {activeClass}</span>
+                  <span className="px-6 py-2 rounded-xl text-xs font-black bg-indigo-600 text-white shadow-lg uppercase tracking-widest">C-{activeClass}</span>
                 ) : (
                   ALL_CLASSES.filter(c => accessibleClasses.includes(c)).map(cls => (
                     <button key={cls} onClick={() => setActiveClass(cls)} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeClass === cls ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>C-{cls}</button>
@@ -269,11 +278,11 @@ const AppContent: React.FC = () => {
           </div>
 
           <div className="flex gap-3">
-            {(user?.role === Role.ADMIN || user?.role === Role.CLASS_INCHARGE) && (
+            {view !== 'entry-portal' && (user?.role === Role.ADMIN || user?.role === Role.CLASS_INCHARGE) && (
               <div className="flex items-center gap-2">
                  <button 
                     onClick={() => fileInputRef.current?.click()} 
-                    className="w-10 h-10 flex items-center justify-center rounded-2xl border border-slate-200 text-emerald-600 hover:bg-emerald-50 transition-all"
+                    className="w-10 h-10 flex items-center justify-center rounded-2xl border border-slate-200 text-emerald-600 hover:bg-emerald-50 transition-all shadow-sm"
                   >
                    <i className="fa-solid fa-file-excel"></i>
                  </button>
@@ -282,7 +291,7 @@ const AppContent: React.FC = () => {
                  </button>
               </div>
             )}
-            <button onClick={logout} className="w-10 h-10 flex items-center justify-center rounded-2xl bg-white border border-slate-100 text-slate-400 hover:text-red-500 transition-all">
+            <button onClick={logout} className="w-10 h-10 flex items-center justify-center rounded-2xl bg-white border border-slate-100 text-slate-400 hover:text-red-500 transition-all shadow-sm">
               <i className="fa-solid fa-power-off"></i>
             </button>
           </div>
@@ -301,10 +310,8 @@ const AppContent: React.FC = () => {
             <div className="bg-white rounded-[40px] w-full max-w-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-300">
               <div className="p-8 bg-indigo-600 text-white flex justify-between items-center">
                 <div>
-                  <h3 className="text-2xl font-black">Excel Import Wizard</h3>
-                  <p className="text-xs text-indigo-100 font-bold uppercase mt-1">
-                     {user?.role === Role.CLASS_INCHARGE ? `Forcing Class ${user.assignedClass}` : `Importing to Class ${activeClass}`}
-                  </p>
+                  <h3 className="text-2xl font-black tracking-tight">Data Wizard</h3>
+                  <p className="text-xs text-indigo-100 font-bold uppercase mt-1">Importing to Class {activeClass}</p>
                 </div>
                 <button onClick={() => setCsvPreview(null)} className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center"><i className="fa-solid fa-xmark"></i></button>
               </div>
