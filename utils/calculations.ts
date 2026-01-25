@@ -1,6 +1,5 @@
 import { Student, CalculatedResult, SubjectType, StudentMarks, ClassLevel, ExamType } from '../types';
-import { GET_SUBJECTS_FOR_CLASS, ALL_CLASSES } from '../constants';
-import { getExamMaxMarks, getMarkKey } from './examRules';
+import { GET_SUBJECTS_FOR_CLASS, ALL_CLASSES, getExamMaxMarks, getMarkKey } from '../constants';
 
 export const calculateStudentResult = (
   student: Student, 
@@ -10,7 +9,6 @@ export const calculateStudentResult = (
   const mainSubjects = subjects.filter(s => s.type === SubjectType.MAIN);
   
   const calculatedTotal = mainSubjects.reduce((acc, sub) => {
-    // sub.key is keyof StudentMarks, getMarkKey now supports it
     const key = getMarkKey(examType, sub.key);
     return acc + (student.marks[key] || 0);
   }, 0);
@@ -88,7 +86,6 @@ export const calculateSubjectStats = (results: CalculatedResult[], classLevel: s
   
   return subjects.map(sub => {
     const maxVal = getExamMaxMarks(examType, sub);
-    // sub.key is keyof StudentMarks, getMarkKey now supports it
     const mKey = getMarkKey(examType, sub.key);
     const scores = results.map(r => r.marks[mKey] ?? 0);
     const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
@@ -108,10 +105,6 @@ export const calculateSubjectStats = (results: CalculatedResult[], classLevel: s
   });
 };
 
-/**
- * Calculates comparative statistics for a subject across all class levels.
- * Update subjectKey type to allow keyof StudentMarks | string for better compatibility.
- */
 export const getComparativeSubjectStats = (allStudents: Student[], subjectKey: keyof StudentMarks | string, examType: ExamType) => {
   return ALL_CLASSES.map(cls => {
     const classResults = allStudents
@@ -123,8 +116,6 @@ export const getComparativeSubjectStats = (allStudents: Student[], subjectKey: k
     const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
     const highest = scores.length > 0 ? Math.max(...scores) : 0;
     const passCount = scores.filter(s => {
-      // Find subject config for max marks
-      // Use string comparison to match subject keys reliably across types
       const subConfig = GET_SUBJECTS_FOR_CLASS(cls).find(sc => String(sc.key) === String(subjectKey));
       const max = subConfig ? getExamMaxMarks(examType, subConfig) : 100;
       return (s / max) * 100 >= 33;
