@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { Student, ClassLevel, StudentMarks, ColumnMapping, Role, ExamType, CalculatedResult } from './types';
+import { Student, ClassLevel, StudentMarks, ColumnMapping, Role, ExamType } from './types';
 import { ALL_CLASSES, GET_SUBJECTS_FOR_CLASS } from './constants';
 import { rankStudents } from './utils/calculations';
 import Dashboard from './components/Dashboard';
@@ -15,10 +15,15 @@ import HomeworkTracker from './components/HomeworkTracker';
 import Sidebar from './components/Sidebar';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
+// ✅ Fix 1: Removed 'examRules' import and defined helper here
+const getMarkKey = (examType: string, subjectKey: string) => {
+  return `${String(examType).toLowerCase()}_${subjectKey.toLowerCase()}`;
+};
+
 const AppContent: React.FC = () => {
   const { user, schoolConfig, logout, isViewRestricted, accessibleClasses } = useAuth();
   
-  const [activeClass, setActiveClass] = useState<ClassLevel>('6');
+  const [activeClass, setActiveClass] = useState<ClassLevel>('10'); // Default to 10
   const [activeExamType, setActiveExamType] = useState<ExamType>(ExamType.FINAL);
   
   const [sortBySubject, setSortBySubject] = useState<keyof StudentMarks | null>(null);
@@ -44,8 +49,8 @@ const AppContent: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (user?.assignedClass && ALL_CLASSES.includes(user.assignedClass)) {
-      setActiveClass(user.assignedClass);
+    if (user?.assignedClass && ALL_CLASSES.includes(user.assignedClass as any)) {
+      setActiveClass(user.assignedClass as ClassLevel);
     }
   }, [user]);
 
@@ -56,7 +61,9 @@ const AppContent: React.FC = () => {
   const classResults = useMemo(() => {
     try {
       const effectiveSort = sortBySubject || undefined;
-      let results = rankStudents(students, activeClass, activeExamType, effectiveSort as string);
+      // Filter students by active class before ranking
+      const currentClassStudents = students.filter(s => s.classLevel === activeClass);
+      let results = rankStudents(currentClassStudents, activeClass, activeExamType, effectiveSort as string);
       
       if (user?.role === Role.STUDENT && user.rollNo) {
         results = results.filter(r => r.rollNo === user.rollNo);
@@ -73,8 +80,17 @@ const AppContent: React.FC = () => {
 
   const handleBulkUpdate = (updatedStudents: Student[]) => {
     setStudents(prev => {
-      const otherClasses = prev.filter(s => s.classLevel !== activeClass);
-      return [...otherClasses, ...updatedStudents];
+      // Create a map of updated students for faster lookup
+      const updatedMap = new Map(updatedStudents.map(s => [s.id, s]));
+      
+      // Return new array: if student is in updatedMap, use that, else use existing
+      const newStudents = prev.map(s => updatedMap.get(s.id) || s);
+      
+      // If there are new students that weren't in prev (unlikely in this flow but possible)
+      const newIds = new Set(prev.map(s => s.id));
+      const brandNew = updatedStudents.filter(s => !newIds.has(s.id));
+      
+      return [...newStudents, ...brandNew];
     });
   };
 
@@ -198,15 +214,12 @@ const AppContent: React.FC = () => {
           />
         );
       case 'entry-portal':
+        // ✅ Fix 2: Updated props to match the new SubjectEntryForm
         return (
           <SubjectEntryForm 
-            classLevel={activeClass} 
-            onClassChange={setActiveClass}
-            students={students.filter(s => s.classLevel === activeClass)} 
+            students={students} // Pass ALL students (Form handles filtering)
             onSave={handleBulkUpdate} 
             onCancel={() => setView('dashboard')} 
-            examType={activeExamType}
-            onExamTypeChange={setActiveExamType}
             currentUser={user}
           />
         );
