@@ -1,338 +1,209 @@
+/* eslint-disable */
 import React, { useState, useMemo } from 'react';
+import * as XLSX from 'xlsx';
 
-/**
- * ResultTable - STANDALONE VERSION
- * Features: 
- * - Dynamic Exam selection.
- * - Main Subjects (Calculated): Math, Sci, Eng, SST, Hindi, Pbi.
- * - Grading Subjects (Display only): Computer, Phy. Edu., Agriculture.
- * - Prefix-based data fetching.
- */
-const ResultTable: React.FC<any> = ({ 
-  results = [], 
-  classLevel = '6', 
+// Internal Types
+interface ResultTableProps {
+  results: any[];
+  classLevel: string;
+  onEdit: (student: any) => void;
+  onDelete: (id: string) => void;
+  highlightSubject?: string | null;
+  activeFilters?: { subject: string | null; band: string | null };
+  onClearFilters?: () => void;
+  examType: string;
+  onExamTypeChange: (type: any) => void;
+}
+
+const ResultTable: React.FC<ResultTableProps> = ({ 
+  results, 
+  classLevel, 
   onEdit, 
-  onDelete 
+  onDelete,
+  highlightSubject,
+  activeFilters,
+  onClearFilters,
+  examType,
+  onExamTypeChange
 }) => {
-  // 1. Local State for Exam Type
-  const [examType, setExamType] = useState<string>('Final Exam');
-  const [searchTerm, setSearchTerm] = useState('');
+  
+  // --- 1. INTERNAL RULES (No External Dependency) ---
+  
+  // Helper to get mark key
+  const getMarkKey = (exam: string, sub: string) => `${exam.toLowerCase()}_${sub.toLowerCase()}`;
 
-  // 2. Localized Subject Configuration
-  // Main Subjects: Used for Display AND Calculations
-  const mainSubjects = useMemo(() => {
-    const isMiddle = ['6', '7', '8'].includes(classLevel);
-    if (isMiddle) {
+  // Helper to get Max Marks
+  const getMaxMarks = (exam: string, sub: string) => {
+    const type = exam.toLowerCase();
+    const isPbi = sub === 'pbi_a' || sub === 'pbi_b';
+    if (type === 'bimonthly') return 20;
+    if (type === 'term' || type === 'preboard') return isPbi ? 65 : 80;
+    if (type === 'final') return isPbi ? 75 : 100;
+    return 100;
+  };
+
+  // Helper to Get Subjects List
+  const getSubjects = (cls: string) => {
+    // 6th-8th
+    if (['6th', '7th', '8th'].includes(cls)) {
       return [
         { key: 'pbi', label: 'Punjabi' },
         { key: 'hindi', label: 'Hindi' },
         { key: 'eng', label: 'English' },
-        { key: 'math', label: 'Math' },
+        { key: 'math', label: 'Mathematics' },
         { key: 'sci', label: 'Science' },
-        { key: 'sst', label: 'SST' },
+        { key: 'sst', label: 'Social Studies' },
+        { key: 'comp', label: 'Computer Science', isGrading: true },
+        { key: 'phy_edu', label: 'Physical Edu', isGrading: true },
+        { key: 'agri', label: 'Agriculture', isGrading: true },
+        { key: 'drawing', label: 'Drawing', isGrading: true },
+        { key: 'welcome_life', label: 'Welcome Life', isGrading: true }
       ];
     }
+    // 9th-10th
     return [
-      { key: 'pbi_a', label: 'Pbi A' },
-      { key: 'pbi_b', label: 'Pbi B' },
+      { key: 'pbi_a', label: 'Punjabi A' },
+      { key: 'pbi_b', label: 'Punjabi B' },
       { key: 'hindi', label: 'Hindi' },
       { key: 'eng', label: 'English' },
-      { key: 'math', label: 'Math' },
+      { key: 'math', label: 'Mathematics' },
       { key: 'sci', label: 'Science' },
-      { key: 'sst', label: 'SST' },
+      { key: 'sst', label: 'Social Studies' },
+      { key: 'comp', label: 'Computer Science', isGrading: true },
+      { key: 'phy_edu', label: 'Physical Edu', isGrading: true },
+      { key: 'drawing', label: 'Drawing', isGrading: true },
+      { key: 'welcome_life', label: 'Welcome Life', isGrading: true }
     ];
-  }, [classLevel]);
-
-  // Grading Subjects: Display only, NO calculation
-  const gradingSubjects = useMemo(() => {
-    const isMiddle = ['6', '7', '8'].includes(classLevel);
-    const base = [
-      { key: 'comp', label: 'Comp' },
-      { key: 'phy_edu', label: 'Phy Edu' },
-    ];
-    if (isMiddle) {
-      return [...base, { key: 'agri', label: 'Agri' }];
-    }
-    return base;
-  }, [classLevel]);
-
-  const allVisibleSubjects = useMemo(() => [...mainSubjects, ...gradingSubjects], [mainSubjects, gradingSubjects]);
-
-  // 3. Calculation Helpers
-  const getMaxMarks = (exam: string, subKey: string) => {
-    if (exam === 'Bimonthly') return 20;
-    if (exam === 'Term Exam' || exam === 'Preboard') return 80;
-    if (exam === 'Final Exam') {
-      const lower = subKey.toLowerCase();
-      if (lower.includes('pbi_a') || lower.includes('pbi_b') || lower.includes('punjabi a') || lower.includes('punjabi b')) {
-        return 75;
-      }
-      return 100;
-    }
-    return 100;
   };
 
-  const getStorageKey = (exam: string, subKey: string) => {
-    const prefix = exam.toLowerCase().split(' ')[0];
-    return `${prefix}_${subKey.toLowerCase()}`;
-  };
+  const subjects = getSubjects(classLevel);
+  const mainSubjects = subjects.filter(s => !s.isGrading);
+  const gradingSubjects = subjects.filter(s => s.isGrading);
 
-  // 4. Process and Calculate Results
+  // --- 2. CALCULATIONS ---
   const processedData = useMemo(() => {
-    const lowerSearch = searchTerm.toLowerCase();
+    return results.map(student => {
+      let totalObtained = 0;
+      let totalMax = 0;
+
+      // Calculate Main Subjects
+      mainSubjects.forEach(sub => {
+        const key = getMarkKey(examType, sub.key);
+        const marks = parseInt(student.marks?.[key] || '0');
+        const max = getMaxMarks(examType, sub.key);
+        
+        totalObtained += marks;
+        totalMax += max;
+      });
+
+      const percentage = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0;
+      
+      return {
+        ...student,
+        totalObtained,
+        percentage: percentage.toFixed(2)
+      };
+    });
+  }, [results, examType, classLevel]);
+
+  // --- 3. EXCEL DOWNLOAD ---
+  const downloadExcel = () => {
+    const headers = ['Rank', 'Roll No', 'Name', ...subjects.map(s => s.label), 'Total', '%'];
     
-    return results
-      .filter((s: any) => 
-        s.name.toLowerCase().includes(lowerSearch) || 
-        s.rollNo.toString().includes(lowerSearch)
-      )
-      .map((student: any) => {
-        let obtained = 0;
-        let totalMax = 0;
-        
-        const marksMapping: Record<string, number> = {};
-        
-        // Process ALL subjects for display mapping
-        allVisibleSubjects.forEach(sub => {
-          const key = getStorageKey(examType, sub.key);
-          const score = student.marks?.[key] || 0;
-          marksMapping[sub.key] = score;
-        });
+    const rows = processedData.map((s, idx) => {
+      const rowData = [
+        idx + 1,
+        s.rollNo,
+        s.name
+      ];
 
-        // ONLY use Main Subjects for calculations (Total/Percentage)
-        mainSubjects.forEach(sub => {
-          const score = marksMapping[sub.key] || 0;
-          obtained += score;
-          totalMax += getMaxMarks(examType, sub.key);
-        });
+      // Add Subject Marks
+      subjects.forEach(sub => {
+        const key = getMarkKey(examType, sub.key);
+        rowData.push(s.marks?.[key] || '0');
+      });
 
-        const percentage = totalMax > 0 ? (obtained / totalMax) * 100 : 0;
+      rowData.push(s.totalObtained);
+      rowData.push(s.percentage + '%');
+      return rowData;
+    });
 
-        return {
-          ...student,
-          displayedMarks: marksMapping,
-          calculatedObtained: obtained,
-          calculatedMax: totalMax,
-          calculatedPercentage: percentage.toFixed(2),
-          isPass: percentage >= 33
-        };
-      })
-      .sort((a, b) => b.calculatedObtained - a.calculatedObtained);
-  }, [results, examType, mainSubjects, allVisibleSubjects, searchTerm]);
-
-  // 5. Export to Excel (CSV) logic
-  const handleDownloadExcel = () => {
-    if (processedData.length === 0) {
-      alert("No data available to export.");
-      return;
-    }
-
-    // Define CSV Headers
-    const headers = [
-      'Rank',
-      'Roll No',
-      'Student Name',
-      ...allVisibleSubjects.map(s => s.label),
-      'Total Obtained (Main)',
-      'Max Marks (Main)',
-      'Percentage (%)',
-      'Status'
-    ];
-
-    // Map rows with ranks
-    const rows = processedData.map((res: any, idx: number) => [
-      idx + 1,
-      res.rollNo,
-      `"${res.name.replace(/"/g, '""')}"`,
-      ...allVisibleSubjects.map(s => res.displayedMarks[s.key] ?? 0),
-      res.calculatedObtained,
-      res.calculatedMax,
-      res.calculatedPercentage,
-      res.isPass ? 'Pass' : 'Fail'
-    ]);
-
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    const examSlug = examType.replace(/\s+/g, '_');
-    link.setAttribute('download', `ResultSheet_${classLevel}_${examSlug}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Result Sheet");
+    XLSX.writeFile(workbook, `ResultSheet_${classLevel}_${examType}.xlsx`);
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      {/* TOOLBAR */}
-      <div className="flex flex-col lg:flex-row justify-between items-center gap-6 bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm">
-        <div className="flex flex-col md:flex-row items-center gap-4 w-full lg:w-auto">
-          <div className="relative w-full md:w-80">
-            <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
-            <input 
-              type="text" 
-              placeholder="Search Student..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-indigo-500 transition-all"
-            />
-          </div>
-
-          <div className="bg-slate-100 p-1 rounded-2xl flex w-full md:w-auto">
-            {['Bimonthly', 'Term Exam', 'Preboard', 'Final Exam'].map(type => (
-              <button
-                key={type}
-                onClick={() => setExamType(type)}
-                className={`flex-1 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                  examType === type ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'
-                }`}
-              >
-                {type.split(' ')[0]}
-              </button>
-            ))}
-          </div>
+    <div className="bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden">
+      {/* Header */}
+      <div className="p-6 border-b flex flex-col md:flex-row justify-between items-center gap-4 bg-white">
+        <div>
+          <h2 className="text-2xl font-black text-slate-800 tracking-tight">Class {classLevel} Results</h2>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">
+            {processedData.length} Students • {examType.toUpperCase()}
+          </p>
         </div>
-
-        <div className="flex items-center gap-3 w-full lg:w-auto">
-          <button 
-            onClick={handleDownloadExcel}
-            className="flex-1 lg:flex-none px-8 py-3 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-emerald-700 hover:-translate-y-1 transition-all flex items-center justify-center gap-2"
-          >
-            <i className="fa-solid fa-file-excel"></i>
-            Download Excel
-          </button>
+        <div className="flex gap-3">
+           <select 
+              value={examType} 
+              onChange={(e) => onExamTypeChange(e.target.value)}
+              className="px-4 py-2 rounded-xl font-bold text-xs bg-indigo-50 text-indigo-700 border border-indigo-100 outline-none"
+           >
+              <option value="bimonthly">Bimonthly</option>
+              <option value="term">Term Exam</option>
+              <option value="preboard">Preboard</option>
+              <option value="final">Final Exam</option>
+           </select>
+           <button onClick={downloadExcel} className="px-6 py-2 bg-emerald-600 text-white font-black text-xs uppercase rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-all flex items-center gap-2">
+             <i className="fa-solid fa-file-excel"></i> Download Excel
+           </button>
         </div>
       </div>
 
-      {/* RESULT SHEET */}
-      <div className="bg-white rounded-[40px] shadow-2xl border border-slate-100 overflow-hidden print:shadow-none print:border-none">
-        <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-slate-900 text-white">
-              <tr className="text-[10px] font-black uppercase tracking-[0.2em]">
-                <th className="px-8 py-6 sticky left-0 bg-slate-900 z-10">Rank</th>
-                <th className="px-8 py-6 sticky left-[80px] bg-slate-900 z-10">Roll No</th>
-                <th className="px-8 py-6 min-w-[200px]">Student Identity</th>
-                
-                {/* Main Subjects Headers */}
-                {mainSubjects.map(sub => (
-                  <th key={sub.key} className="px-4 py-6 text-center whitespace-nowrap">
-                    <div className="flex flex-col">
-                      <span>{sub.label}</span>
-                      <span className="text-[7px] opacity-50 font-black">Max {getMaxMarks(examType, sub.key)}</span>
-                    </div>
-                  </th>
-                ))}
-
-                {/* Grading Subjects Headers */}
-                {gradingSubjects.map(sub => (
-                  <th key={sub.key} className="px-4 py-6 text-center whitespace-nowrap bg-slate-800">
-                    <div className="flex flex-col">
-                      <span>{sub.label}</span>
-                      <span className="text-[7px] opacity-50 font-black text-amber-400">Grading</span>
-                    </div>
-                  </th>
-                ))}
-
-                <th className="px-6 py-6 text-center bg-indigo-800">Total</th>
-                <th className="px-6 py-6 text-center bg-indigo-700">%age</th>
-                <th className="px-6 py-6 text-center bg-slate-800">Status</th>
-                <th className="px-6 py-6 text-center print:hidden">Edit</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {processedData.length === 0 ? (
-                <tr>
-                  <td colSpan={allVisibleSubjects.length + 7} className="px-8 py-32 text-center text-slate-300 font-black uppercase tracking-widest text-xs">
-                    No results found for {examType}
-                  </td>
-                </tr>
-              ) : (
-                processedData.map((res: any, idx: number) => (
-                  <tr key={res.id} className="hover:bg-indigo-50/30 transition-colors group">
-                    <td className="px-8 py-5 text-center sticky left-0 bg-white group-hover:bg-slate-50 z-10">
-                      <span className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black ${
-                        idx === 0 ? 'bg-yellow-400 text-white' : 
-                        idx === 1 ? 'bg-slate-300 text-white' : 
-                        idx === 2 ? 'bg-amber-100 text-amber-700' : 
-                        'text-slate-400'
-                      }`}>
-                        {idx + 1}
-                      </span>
-                    </td>
-                    <td className="px-8 py-5 font-black text-slate-500 sticky left-[80px] bg-white group-hover:bg-slate-50 z-10 border-r border-slate-50">
-                      {res.rollNo}
-                    </td>
-                    <td className="px-8 py-5 font-black text-slate-800">
-                      {res.name}
-                    </td>
-
-                    {/* All Subject Marks (Main + Grading) */}
-                    {allVisibleSubjects.map(sub => (
-                      <td key={sub.key} className={`px-4 py-5 text-center font-bold ${gradingSubjects.some(g => g.key === sub.key) ? 'text-slate-400 bg-slate-50/50' : 'text-slate-600'}`}>
-                        {res.displayedMarks[sub.key] ?? '-'}
+      {/* Table */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest">
+              <th className="p-4 rounded-tl-2xl">Rank</th>
+              <th className="p-4">Roll No</th>
+              <th className="p-4">Name</th>
+              {subjects.map(s => (
+                <th key={s.key} className={`p-4 text-center ${s.isGrading ? 'text-slate-400' : 'text-white'}`}>
+                  {s.label} <br/>
+                  <span className="text-[8px] opacity-60">MM: {getMaxMarks(examType, s.key)}</span>
+                </th>
+              ))}
+              <th className="p-4 text-center bg-indigo-600">Total</th>
+              <th className="p-4 text-center bg-indigo-700 rounded-tr-2xl">%</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 text-xs font-bold text-slate-600">
+            {processedData.length === 0 ? (
+               <tr><td colSpan={subjects.length + 5} className="p-8 text-center text-slate-400">No data available.</td></tr>
+            ) : (
+              processedData.map((s, idx) => (
+                <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="p-4 text-center"><span className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-slate-600">{idx + 1}</span></td>
+                  <td className="p-4">{s.rollNo}</td>
+                  <td className="p-4 text-slate-900">{s.name}</td>
+                  {subjects.map(sub => {
+                    const key = getMarkKey(examType, sub.key);
+                    const val = s.marks?.[key] || '0';
+                    return (
+                      <td key={sub.key} className="p-4 text-center">
+                        {val}
                       </td>
-                    ))}
-
-                    <td className="px-6 py-5 text-center font-black text-indigo-700 bg-indigo-50/30">
-                      {res.calculatedObtained}
-                    </td>
-                    <td className="px-6 py-5 text-center font-black text-slate-900">
-                      {res.calculatedPercentage}%
-                    </td>
-                    <td className="px-6 py-5 text-center">
-                      <span className={`px-4 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${
-                        res.isPass ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-red-100 text-red-700 border-red-200'
-                      }`}>
-                        {res.isPass ? 'Pass' : 'Fail'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-5 text-center print:hidden">
-                       <button onClick={() => onEdit && onEdit(res)} className="w-8 h-8 bg-slate-100 rounded-lg text-slate-400 hover:bg-indigo-600 hover:text-white transition-all">
-                         <i className="fa-solid fa-pen"></i>
-                       </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* QUICK ANALYTICS FOOTER */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
-           <div className="w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center text-xl shadow-inner"><i className="fa-solid fa-graduation-cap"></i></div>
-           <div>
-              <span className="text-[10px] font-black text-slate-400 uppercase block">Pass Percentage</span>
-              <span className="text-xl font-black text-slate-800">
-                {processedData.length > 0 ? ((processedData.filter((r: any) => r.isPass).length / processedData.length) * 100).toFixed(0) : 0}%
-              </span>
-           </div>
-        </div>
-        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
-           <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center text-xl shadow-inner"><i className="fa-solid fa-medal"></i></div>
-           <div>
-              <span className="text-[10px] font-black text-slate-400 uppercase block">Top Achiever</span>
-              <span className="text-xl font-black text-slate-800 truncate max-w-[150px] block">
-                {processedData[0]?.name || 'N/A'}
-              </span>
-           </div>
-        </div>
-        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
-           <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center text-xl shadow-inner"><i className="fa-solid fa-users"></i></div>
-           <div>
-              <span className="text-[10px] font-black text-slate-400 uppercase block">Total Strength</span>
-              <span className="text-xl font-black text-slate-800">{processedData.length} Students</span>
-           </div>
-        </div>
+                    );
+                  })}
+                  <td className="p-4 text-center font-black text-indigo-600 bg-indigo-50/30">{s.totalObtained}</td>
+                  <td className="p-4 text-center font-black text-white bg-indigo-500">{s.percentage}%</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );
