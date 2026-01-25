@@ -1,8 +1,7 @@
+import { Student, StudentMarks, ClassLevel, ExamType } from '../types';
+import { GET_SUBJECTS_FOR_CLASS, getMarkKey } from '../constants';
 
-import { Student, StudentMarks, ClassLevel } from '../types';
-import { GET_SUBJECTS_FOR_CLASS } from '../constants';
-
-export const parseCSV = async (file: File, classLevel: ClassLevel): Promise<Student[]> => {
+export const parseCSV = async (file: File, classLevel: ClassLevel, examType: ExamType): Promise<Student[]> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -20,20 +19,19 @@ export const parseCSV = async (file: File, classLevel: ClassLevel): Promise<Stud
           const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
           if (values.length < 2) continue;
 
-          const studentMarks: any = {};
+          const studentMarks: Record<string, number> = {};
           
-          // Basic mapping of Name and Roll No
           const rollNo = values[headers.indexOf('roll no')] || values[0];
           const name = values[headers.indexOf('name')] || values[1];
 
-          // Map marks based on subject labels
           subjects.forEach(sub => {
             const headerIdx = headers.indexOf(sub.label.toLowerCase());
+            const mKey = getMarkKey(examType, sub.key);
             if (headerIdx !== -1) {
               const val = parseInt(values[headerIdx]);
-              studentMarks[sub.key] = isNaN(val) ? 0 : Math.min(100, Math.max(0, val));
+              studentMarks[mKey] = isNaN(val) ? 0 : Math.min(100, Math.max(0, val));
             } else {
-              studentMarks[sub.key] = 0;
+              studentMarks[mKey] = 0;
             }
           });
 
@@ -42,7 +40,7 @@ export const parseCSV = async (file: File, classLevel: ClassLevel): Promise<Stud
             rollNo,
             name,
             classLevel,
-            marks: studentMarks as StudentMarks
+            marks: studentMarks
           });
         }
 
