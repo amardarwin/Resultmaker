@@ -1,31 +1,49 @@
 import React, { useState, useEffect, useMemo } from 'react';
 
-// ✅ Types Definition (Local types to prevent errors)
+// ✅ Types Definition (Local types)
 type ClassLevel = '6th' | '7th' | '8th' | '9th' | '10th';
 
 interface SubjectEntryFormProps {
-  students: any[];
-  onSave: (students: any[]) => void;
-  onCancel: () => void;
+  // ✅ Sabko Optional (?) bana diya taaki parent se error na aaye
+  students?: any[]; 
+  onSave?: (students: any[]) => void; 
+  onCancel?: () => void; 
   currentUser: any;
 }
 
 const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({ 
-  students = [], 
+  students = [], // Default empty array
   onSave, 
   onCancel,
   currentUser,
 }) => {
+  
   // 1. Local State
   const [selectedClass, setSelectedClass] = useState<string>(currentUser?.assignedClass || '10th');
   const [examType, setExamType] = useState<string>('bimonthly');
   const [selectedSubKey, setSelectedSubKey] = useState<string>('math');
+  
+  // ✅ Internal Data State (Agar props se data na mile toh yahan store hoga)
+  const [allData, setAllData] = useState<any[]>(students);
   const [localMarks, setLocalMarks] = useState<Record<string, string>>({});
 
-  // 2. DYNAMIC SUBJECT LIST (Class ke hisaab se subject badlenge)
+  // ✅ Auto-Load Data from LocalStorage (Agar App.tsx ne data nahi bheja)
+  useEffect(() => {
+    if (allData.length === 0) {
+      const saved = localStorage.getItem('student_data');
+      if (saved) {
+        try {
+          setAllData(JSON.parse(saved));
+        } catch (e) {
+          console.error("Data load error", e);
+        }
+      }
+    }
+  }, [allData.length]);
+
+  // 2. DYNAMIC SUBJECT LIST
   const subjects = useMemo(() => {
     const cls = selectedClass;
-    // 6th to 8th
     if (['6th', '7th', '8th'].includes(cls)) {
       return [
         { key: 'math', label: 'Mathematics' },
@@ -41,7 +59,6 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({
         { key: 'welcome_life', label: 'Welcome Life' }
       ];
     }
-    // 9th & 10th
     return [
       { key: 'math', label: 'Mathematics' },
       { key: 'sci', label: 'Science' },
@@ -57,23 +74,14 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({
     ];
   }, [selectedClass]);
 
-  // 3. MARKS LOGIC (65 Marks Rule & Others)
+  // 3. MARKS LOGIC (65 Marks Rule)
   const maxMarks = useMemo(() => {
     const type = examType.toLowerCase();
     const isPbi = selectedSubKey === 'pbi_a' || selectedSubKey === 'pbi_b';
 
-    // Rule 1: Bimonthly
     if (type === 'bimonthly') return 20;
-
-    // Rule 2: Term or Preboard (FIXED: 65 for Pbi)
-    if (type === 'term' || type === 'preboard') {
-      return isPbi ? 65 : 80;
-    }
-
-    // Rule 3: Final
-    if (type === 'final') {
-      return isPbi ? 75 : 100;
-    }
+    if (type === 'term' || type === 'preboard') return isPbi ? 65 : 80;
+    if (type === 'final') return isPbi ? 75 : 100;
 
     return 100;
   }, [examType, selectedSubKey]);
@@ -83,15 +91,15 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({
     if (!currentUser) return false;
     const role = currentUser.role;
 
-    // A. ADMIN: Sab Maaf (Unlock Everything)
+    // A. Admin: Unlock
     if (role === 'ADMIN') return true;
 
-    // B. CLASS INCHARGE: Apni Class mein sab kuch
+    // B. Class Incharge: Own Class Unlock
     if (role === 'CLASS_INCHARGE' && currentUser.assignedClass === selectedClass) {
       return true;
     }
 
-    // C. SUBJECT TEACHER (Ya Incharge dusri class mein): Sirf Apna Subject
+    // C. Subject Teacher: Own Subject Unlock
     if (Array.isArray(currentUser.teachingSubjects)) {
       return currentUser.teachingSubjects.includes(selectedSubKey);
     }
@@ -99,38 +107,31 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({
     return false;
   }, [currentUser, selectedClass, selectedSubKey]);
 
-  // Storage Key Logic
   const storageKey = `${examType}_${selectedSubKey}`;
 
-  // Load Data
+  // Load Marks for Selected Class
   useEffect(() => {
     const fresh: Record<string, string> = {};
-    students.forEach((s: any) => {
-      // Filter logic to only show students of selected class
+    allData.forEach((s: any) => {
       if (s.class === selectedClass || s.className === selectedClass) {
         const val = s[storageKey];
         fresh[s.rollNo] = (val !== undefined && val !== null) ? String(val) : '';
       }
     });
     setLocalMarks(fresh);
-  }, [storageKey, students, selectedClass]);
+  }, [storageKey, allData, selectedClass]);
 
-  // Handle Input Change
   const handleInputChange = (rollNo: string, val: string) => {
-    if (!canEdit) return; // 🔒 Security check
-    if (val !== '' && !/^\d+$/.test(val)) return; // Only numbers
+    if (!canEdit) return;
+    if (val !== '' && !/^\d+$/.test(val)) return;
     setLocalMarks(prev => ({ ...prev, [rollNo]: val }));
   };
 
-  // Save Logic
   const handleCommit = () => {
-    if (!canEdit) {
-      alert("Access Denied.");
-      return;
-    }
+    if (!canEdit) { alert("Access Denied."); return; }
 
     // Check Max Marks
-    const currentClassStudents = students.filter((s:any) => s.class === selectedClass || s.className === selectedClass);
+    const currentClassStudents = allData.filter((s:any) => s.class === selectedClass || s.className === selectedClass);
     for (const s of currentClassStudents) {
       const mark = parseInt(localMarks[s.rollNo] || '0');
       if (mark > maxMarks) {
@@ -139,26 +140,27 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({
       }
     }
 
-    // Save to Parent/Storage
-    const updatedStudents = students.map((s: any) => {
+    // Save Logic
+    const updatedStudents = allData.map((s: any) => {
       if ((s.class === selectedClass || s.className === selectedClass) && localMarks[s.rollNo] !== undefined) {
-         // Save globally to localstorage immediately for safety
          const key = storageKey;
-         s[key] = localMarks[s.rollNo];
          return { ...s, [key]: localMarks[s.rollNo] };
       }
       return s;
     });
 
-    onSave(updatedStudents);
-    localStorage.setItem('student_data', JSON.stringify(updatedStudents));
+    setAllData(updatedStudents); // Local update
+    localStorage.setItem('student_data', JSON.stringify(updatedStudents)); // Hard Save
+    
+    // Parent update (if function exists)
+    if (onSave) onSave(updatedStudents);
+    
     alert("Marks Saved Successfully!");
   };
 
-  // Download Logic
   const downloadAwardList = () => {
     const headers = ['Roll No', 'Student Name', `Marks (Max: ${maxMarks})`];
-    const currentClassStudents = students.filter((s:any) => s.class === selectedClass || s.className === selectedClass);
+    const currentClassStudents = allData.filter((s:any) => s.class === selectedClass || s.className === selectedClass);
     
     if (currentClassStudents.length === 0) {
       alert("No students found to download.");
@@ -183,7 +185,7 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({
   return (
     <div className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200">
       
-      {/* HEADER & CONTROLS */}
+      {/* HEADER */}
       <div className="p-6 bg-slate-900 text-white">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
@@ -194,40 +196,22 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({
           </div>
           
           <div className="flex flex-wrap gap-2 text-black">
-            {/* Class Selector */}
-            <select 
-              value={selectedClass} 
-              onChange={e => setSelectedClass(e.target.value)}
-              className="px-3 py-2 rounded-lg font-bold text-sm bg-indigo-50 border-2 border-indigo-200"
-            >
+            <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} className="px-3 py-2 rounded-lg font-bold text-sm bg-indigo-50">
               {['6th','7th','8th','9th','10th'].map(c => <option key={c} value={c}>Class {c}</option>)}
             </select>
 
-            {/* Exam Selector */}
-            <select 
-              value={examType} 
-              onChange={e => setExamType(e.target.value)}
-              className="px-3 py-2 rounded-lg font-bold text-sm bg-indigo-50 border-2 border-indigo-200"
-            >
+            <select value={examType} onChange={e => setExamType(e.target.value)} className="px-3 py-2 rounded-lg font-bold text-sm bg-indigo-50">
               <option value="bimonthly">Bimonthly (20)</option>
               <option value="term">Term Exam (80/65)</option>
               <option value="preboard">Preboard (80/65)</option>
               <option value="final">Final (100/75)</option>
             </select>
 
-            {/* Subject Selector */}
-            <select 
-              value={selectedSubKey} 
-              onChange={e => setSelectedSubKey(e.target.value)}
-              className="px-3 py-2 rounded-lg font-bold text-sm bg-indigo-50 border-2 border-indigo-200 min-w-[120px]"
-            >
+            <select value={selectedSubKey} onChange={e => setSelectedSubKey(e.target.value)} className="px-3 py-2 rounded-lg font-bold text-sm bg-indigo-50 min-w-[120px]">
               {subjects.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
             </select>
 
-            {/* Max Marks Indicator */}
-            <div className="bg-indigo-600 px-4 py-2 rounded-lg text-white font-bold border border-indigo-400">
-              MM: {maxMarks}
-            </div>
+            <div className="bg-indigo-600 px-4 py-2 rounded-lg text-white font-bold border border-indigo-400">MM: {maxMarks}</div>
           </div>
         </div>
       </div>
@@ -254,10 +238,10 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {students.filter((s:any) => s.class === selectedClass || s.className === selectedClass).length === 0 ? (
+            {allData.filter((s:any) => s.class === selectedClass || s.className === selectedClass).length === 0 ? (
                <tr><td colSpan={3} className="p-8 text-center text-gray-400">No students found in Class {selectedClass}</td></tr>
             ) : (
-              students.filter((s:any) => s.class === selectedClass || s.className === selectedClass).map((s:any) => {
+              allData.filter((s:any) => s.class === selectedClass || s.className === selectedClass).map((s:any) => {
                 const val = localMarks[s.rollNo] || '';
                 const isInvalid = parseInt(val) > maxMarks;
                 return (
@@ -288,10 +272,10 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({
       {/* FOOTER */}
       <div className="p-4 bg-white border-t flex justify-between items-center">
         <button onClick={downloadAwardList} className="text-emerald-600 font-bold text-xs uppercase flex items-center gap-2 hover:bg-emerald-50 px-3 py-2 rounded">
-          📥 Download Award List
+          📥 Award List
         </button>
         <div className="flex gap-3">
-          <button onClick={onCancel} className="px-6 py-2 text-gray-500 font-bold uppercase text-xs hover:bg-gray-100 rounded">Close</button>
+          {onCancel && <button onClick={onCancel} className="px-6 py-2 text-gray-500 font-bold uppercase text-xs hover:bg-gray-100 rounded">Close</button>}
           <button 
             onClick={handleCommit} 
             disabled={!canEdit}
