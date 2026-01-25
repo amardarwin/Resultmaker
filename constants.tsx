@@ -44,7 +44,7 @@ export const getMarkKey = (examType: string | undefined, subjectKey: string | nu
 };
 
 /**
- * Global Marks Rule Logic
+ * Internal Marks Logic (Requirement 2 Fix)
  */
 export const getExamMaxMarks = (examType: string | undefined, subject: any): number => {
   if (!examType || !subject) return 100;
@@ -53,15 +53,15 @@ export const getExamMaxMarks = (examType: string | undefined, subject: any): num
   const subKey = (typeof subject === 'string' ? subject : subject.key || '').toLowerCase().trim();
   const isPbiSpecial = subKey === 'pbi_a' || subKey === 'pbi_b';
 
-  // 1. Bimonthly Rule
+  // 1. IF Exam is 'bimonthly': Max = 20
   if (type.includes('bimonthly')) return 20;
 
-  // 2. Term / Preboard Rules
+  // 2. IF Exam is 'term' OR 'preboard'
   if (type.includes('term') || type.includes('preboard')) {
     return isPbiSpecial ? 65 : 80;
   }
 
-  // 3. Final Exam Rules
+  // 3. IF Exam is 'final'
   if (type.includes('final')) {
     return isPbiSpecial ? 75 : 100;
   }
