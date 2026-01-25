@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 /**
  * SubjectEntryForm - STANDALONE COMPONENT
  * No external imports. Localized logic for Middle and High School schemas.
+ * Includes: Strict Permissions, Dynamic Subjects, Max Marks Logic, and CSV Export.
  */
 const SubjectEntryForm: React.FC<any> = ({ 
   classLevel = '6', 
@@ -17,8 +18,6 @@ const SubjectEntryForm: React.FC<any> = ({
   
   /**
    * getSubjects - Requirement: Dynamic list based on Class
-   * Condition 1: Middle (6, 7, 8)
-   * Condition 2: High (9, 10)
    */
   const getSubjects = (cls: string) => {
     const isMiddle = ['6', '7', '8'].includes(cls);
@@ -53,32 +52,65 @@ const SubjectEntryForm: React.FC<any> = ({
   const [selectedSubKey, setSelectedSubKey] = useState<string>(subjects[0]?.key || '');
   const [localMarks, setLocalMarks] = useState<Record<string, string>>({});
 
-  // 2. Max Marks Logic (Requirement: Keep 75 marks for Punjabi A/B in Finals)
+  /**
+   * canEdit - Requirement 1: Strict Permissions Logic
+   */
+  const canEdit = useMemo(() => {
+    if (!currentUser) return true; // Safety fallback
+    const { role, assignedClass, teachingSubjects } = currentUser;
+    
+    if (role === 'ADMIN') return true;
+
+    if (role === 'CLASS_INCHARGE') {
+      // Incharge: Matching Class OR Teaching the Subject
+      const classMatch = String(classLevel) === String(assignedClass);
+      const subjectMatch = teachingSubjects?.includes(selectedSubKey);
+      return classMatch || subjectMatch;
+    }
+
+    if (role === 'SUBJECT_TEACHER') {
+      // Teacher: Matching Class AND Teaching the Subject
+      const classMatch = String(classLevel) === String(assignedClass);
+      const subjectMatch = teachingSubjects?.includes(selectedSubKey);
+      return classMatch && subjectMatch;
+    }
+
+    return false; // Strictly block others (Students/Guests)
+  }, [currentUser, classLevel, selectedSubKey]);
+
+  /**
+   * getMaxMarks - Requirement 2: Updated Marks Logic
+   */
   const getMaxMarks = (exam: string, subKey: string) => {
+    const lowerKey = subKey.toLowerCase();
+    const isPbiAB = lowerKey === 'pbi_a' || lowerKey === 'pbi_b' || lowerKey === 'punjabi a' || lowerKey === 'punjabi b';
+
     if (exam === 'Bimonthly') return 20;
-    if (exam === 'Term Exam' || exam === 'Preboard') return 80;
+
+    if (exam === 'Term Exam' || exam === 'Preboard') {
+      if (isPbiAB) return 65; // New Rule
+      return 80;
+    }
+
     if (exam === 'Final Exam') {
-      const lowerKey = subKey.toLowerCase();
-      // Logic: Final Exam + Punjabi A or B = 75
-      if (lowerKey === 'pbi_a' || lowerKey === 'pbi_b' || lowerKey === 'punjabi a' || lowerKey === 'punjabi b') {
-        return 75;
-      }
+      if (isPbiAB) return 75; // Original Rule
       return 100;
     }
+
     return 100;
   };
 
   const currentMax = useMemo(() => getMaxMarks(selectedExam, selectedSubKey), [selectedExam, selectedSubKey]);
 
-  // Generate a simple storage key (e.g., 'final_math', 'term_hindi')
+  // Storage Key Generation
   const generateStorageKey = (exam: string, sub: string) => {
-    const prefix = exam.toLowerCase().split(' ')[0]; // 'final', 'term', 'preboard', 'bimonthly'
+    const prefix = exam.toLowerCase().split(' ')[0];
     return `${prefix}_${sub.toLowerCase()}`;
   };
 
   const storageKey = useMemo(() => generateStorageKey(selectedExam, selectedSubKey), [selectedExam, selectedSubKey]);
 
-  // 3. Hydrate Local Data when settings change
+  // Sync state
   useEffect(() => {
     const freshMarks: Record<string, string> = {};
     students.forEach((s: any) => {
@@ -88,7 +120,6 @@ const SubjectEntryForm: React.FC<any> = ({
     setLocalMarks(freshMarks);
   }, [storageKey, students]);
 
-  // Reset selected subject if class level changes schema
   useEffect(() => {
     if (!subjects.some(s => s.key === selectedSubKey)) {
       setSelectedSubKey(subjects[0]?.key || '');
@@ -96,11 +127,17 @@ const SubjectEntryForm: React.FC<any> = ({
   }, [classLevel, subjects, selectedSubKey]);
 
   const handleInputChange = (id: string, val: string) => {
+    if (!canEdit) return; // Prevent state update if no permission
     if (val !== '' && !/^\d+$/.test(val)) return;
     setLocalMarks(prev => ({ ...prev, [id]: val }));
   };
 
   const handleCommit = () => {
+    if (!canEdit) {
+      alert("🚫 Permission Denied: You do not have authority to save records for this registry.");
+      return;
+    }
+
     const violations = students.filter((s: any) => {
       const val = parseInt(localMarks[s.id] || '0', 10);
       return val > currentMax;
@@ -123,7 +160,6 @@ const SubjectEntryForm: React.FC<any> = ({
     alert(`✅ Success: Registry updated for ${selectedExam} - ${selectedSubKey.toUpperCase()}.`);
   };
 
-  // 4. Download Award List Feature (Preserved)
   const handleDownloadAwardList = () => {
     if (students.length === 0) {
       alert("No student data available to download.");
@@ -160,8 +196,18 @@ const SubjectEntryForm: React.FC<any> = ({
       <div className="p-8 bg-slate-900 text-white">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
           <div>
-            <h2 className="text-3xl font-black">Subject Entry Portal</h2>
-            <p className="text-indigo-300 text-[10px] font-black uppercase tracking-[0.3em] mt-3">Active Class: {classLevel} • {currentUser?.name || 'Administrator'}</p>
+            <div className="flex items-center gap-3">
+              <h2 className="text-3xl font-black">Subject Entry Portal</h2>
+              {!canEdit && (
+                <span className="bg-red-500/20 text-red-400 border border-red-500/50 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-2">
+                  <i className="fa-solid fa-lock text-[8px]"></i>
+                  Read Only
+                </span>
+              )}
+            </div>
+            <p className="text-indigo-300 text-[10px] font-black uppercase tracking-[0.3em] mt-3">
+              Active Class: {classLevel} • {currentUser?.name || 'Administrator'}
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-4 bg-white/5 p-4 rounded-[32px] border border-white/10">
@@ -173,9 +219,9 @@ const SubjectEntryForm: React.FC<any> = ({
                 className="bg-white text-slate-950 px-5 py-2.5 rounded-2xl text-[11px] font-black outline-none shadow-xl"
               >
                 <option value="Bimonthly">Bimonthly (Max 20)</option>
-                <option value="Term Exam">Term Exam (Max 80)</option>
-                <option value="Preboard">Preboard (Max 80)</option>
-                <option value="Final Exam">Final Exam (Max 100/75)</option>
+                <option value="Term Exam">Term Exam</option>
+                <option value="Preboard">Preboard</option>
+                <option value="Final Exam">Final Exam</option>
               </select>
             </div>
 
@@ -200,6 +246,14 @@ const SubjectEntryForm: React.FC<any> = ({
 
       {/* DATA TABLE */}
       <div className="max-h-[55vh] overflow-y-auto bg-slate-50/50">
+        {!canEdit && (
+          <div className="bg-amber-50 p-4 border-b border-amber-100 flex items-center justify-center gap-4">
+             <i className="fa-solid fa-triangle-exclamation text-amber-500"></i>
+             <span className="text-[10px] font-black text-amber-700 uppercase tracking-widest">
+               Restricted Access: You are not assigned to this class or subject. Editing is disabled.
+             </span>
+          </div>
+        )}
         <table className="w-full text-left">
           <thead className="sticky top-0 bg-white z-30 shadow-sm border-b">
             <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
@@ -235,18 +289,24 @@ const SubjectEntryForm: React.FC<any> = ({
                         <input 
                           type="text"
                           value={val}
+                          readOnly={!canEdit}
+                          disabled={!canEdit}
                           onChange={(e) => handleInputChange(s.id, e.target.value)}
                           className={`w-32 p-4 text-center rounded-2xl font-black text-2xl shadow-inner border-2 transition-all outline-none ${
-                            isViolation ? 'border-red-400 bg-red-50 text-red-600 animate-pulse' : 'border-slate-100 bg-white text-slate-900 focus:border-indigo-600'
+                            !canEdit ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed' :
+                            isViolation ? 'border-red-400 bg-red-50 text-red-600 animate-pulse' : 
+                            'border-slate-100 bg-white text-slate-900 focus:border-indigo-600'
                           }`}
-                          placeholder="-"
+                          placeholder={canEdit ? "-" : "N/A"}
                         />
                       </div>
                     </td>
                     <td className="px-10 py-5">
                       <div className="flex justify-center">
                         <span className={`px-5 py-2 rounded-full text-[9px] font-black uppercase tracking-widest border transition-colors ${
-                          val === '' ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                          val === '' ? 'bg-slate-100 text-slate-400 border-slate-200' : 
+                          !canEdit ? 'bg-slate-50 text-slate-400 border-slate-100' :
+                          'bg-emerald-100 text-emerald-700 border-emerald-200'
                         }`}>
                           {val === '' ? 'Awaiting' : 'Entered'}
                         </span>
@@ -263,7 +323,9 @@ const SubjectEntryForm: React.FC<any> = ({
       {/* FOOTER ACTIONS */}
       <div className="p-10 bg-slate-50 border-t flex flex-col sm:flex-row items-center justify-between gap-8">
         <div className="flex items-center gap-4">
-           <div className="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center text-indigo-600 text-xl shadow-inner"><i className="fa-solid fa-cloud-arrow-up"></i></div>
+           <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl shadow-inner ${canEdit ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200 text-slate-400'}`}>
+             <i className={`fa-solid ${canEdit ? 'fa-cloud-arrow-up' : 'fa-lock'}`}></i>
+           </div>
            <div>
              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Class Registry</span>
              <span className="text-sm font-black text-slate-800">{students.length} Records Loaded</span>
@@ -287,7 +349,12 @@ const SubjectEntryForm: React.FC<any> = ({
 
           <button 
             onClick={handleCommit} 
-            className="px-12 py-5 bg-indigo-600 text-white font-black rounded-3xl text-[11px] uppercase tracking-widest shadow-2xl shadow-indigo-100 hover:bg-slate-950 hover:-translate-y-1 transition-all"
+            disabled={!canEdit}
+            className={`px-12 py-5 font-black rounded-3xl text-[11px] uppercase tracking-widest shadow-2xl transition-all ${
+              canEdit 
+              ? 'bg-indigo-600 text-white shadow-indigo-100 hover:bg-slate-950 hover:-translate-y-1' 
+              : 'bg-slate-300 text-slate-500 shadow-none cursor-not-allowed'
+            }`}
           >
             Save Registry
           </button>
