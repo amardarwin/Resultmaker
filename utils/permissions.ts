@@ -1,4 +1,3 @@
-
 import { User, Role, ClassLevel, StudentMarks } from '../types';
 
 export type Permission = 'EDIT' | 'READ';
@@ -9,7 +8,7 @@ export type Permission = 'EDIT' | 'READ';
 export const getColumnPermission = (
   user: User | null, 
   currentClass: ClassLevel, 
-  subject: keyof StudentMarks
+  subject: string
 ): Permission => {
   if (!user) return 'READ';
 
@@ -22,7 +21,8 @@ export const getColumnPermission = (
   }
 
   // 3. Subject Assignment Level (Granular access to specific subjects in specific classes)
-  const assignment = user.teachingAssignments?.find(a => a.classLevel === currentClass);
+  const assignments = user.teachingAssignments || [];
+  const assignment = assignments.find(a => a.classLevel === currentClass);
   if (assignment?.subjects.includes(subject)) {
     return 'EDIT';
   }
