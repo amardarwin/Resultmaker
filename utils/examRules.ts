@@ -2,6 +2,7 @@ import { ExamType, SubjectConfig } from '../types';
 
 /**
  * Generates a standardized lowercase key for marks storage.
+ * Ensures consistent lookup across the application.
  */
 export const getMarkKey = (examType: string | undefined, subjectKey: string | number | undefined): string => {
   const safeExam = String(examType || '').trim().toLowerCase();
@@ -16,11 +17,22 @@ export const getMarkKey = (examType: string | undefined, subjectKey: string | nu
 /**
  * Returns the maximum marks allowed for a specific exam and subject.
  * 
- * Logic Requirements:
- * 1. Bimonthly: 20 for ALL subjects.
- * 2. High School (9-10) Punjabi (keys: pbi_a, pbi_b): Term/Preboard: 65, Final: 75.
- * 3. Middle School (6-8) Punjabi (key: pbi): Term/Preboard: 80, Final: 100.
- * 4. General Main Subjects: Term/Preboard: 80, Final: 100.
+ * Rules for Middle School (6-8):
+ * - Subject: 'pbi'
+ * - Bimonthly: 20
+ * - Term/Preboard: 80
+ * - Final: 100
+ * 
+ * Rules for High School (9-10):
+ * - Subjects: 'pbi_a', 'pbi_b'
+ * - Bimonthly: 20
+ * - Term/Preboard: 65
+ * - Final: 75
+ * 
+ * General Main Subjects:
+ * - Bimonthly: 20
+ * - Term/Preboard: 80
+ * - Final: 100
  */
 export const getExamMaxMarks = (examType: string | undefined, subject: SubjectConfig | string | undefined): number => {
   if (!examType || !subject) return 100;
@@ -28,19 +40,21 @@ export const getExamMaxMarks = (examType: string | undefined, subject: SubjectCo
   const subKey = typeof subject === 'string' ? subject.toLowerCase() : String(subject.key).toLowerCase();
   const type = String(examType);
 
-  // Requirement: Bimonthly is always 20
+  // Requirement: Bimonthly is always 20 for all subjects across all levels
   if (type === ExamType.BIMONTHLY) return 20;
 
-  // Requirement: Identify High School Punjabi Variations
+  // Requirement: Distinguish between High School Punjabi (A/B) and Middle/Other subjects
   const isHighSchoolPbi = subKey === 'pbi_a' || subKey === 'pbi_b';
 
-  // Rule 2: Term/Preboard exams (HS Pbi: 65, others: 80)
+  // Rule 2: Term/Preboard exams
   if (type === ExamType.TERM || type === ExamType.PREBOARD) {
+    // High School Punjabi is 65, everything else (including Middle Pbi) is 80
     return isHighSchoolPbi ? 65 : 80;
   }
 
-  // Rule 3: Final Exam logic (HS Pbi: 75, others: 100)
+  // Rule 3: Final Exam logic
   if (type === ExamType.FINAL) {
+    // High School Punjabi is 75, everything else (including Middle Pbi) is 100
     return isHighSchoolPbi ? 75 : 100;
   }
 
