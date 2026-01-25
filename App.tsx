@@ -14,7 +14,6 @@ import AttendanceManager from './components/AttendanceManager';
 import HomeworkTracker from './components/HomeworkTracker';
 import Sidebar from './components/Sidebar';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { getMarkKey } from './utils/examRules';
 
 const AppContent: React.FC = () => {
   const { user, schoolConfig, logout, isViewRestricted, accessibleClasses } = useAuth();
