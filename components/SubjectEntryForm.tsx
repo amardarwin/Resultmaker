@@ -1,17 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 
-// ✅ Types Definition (Taaki external file ki zaroorat na pade)
+// ✅ Types Definition (Local types to prevent errors)
 type ClassLevel = '6th' | '7th' | '8th' | '9th' | '10th';
-type ExamType = 'bimonthly' | 'term' | 'preboard' | 'final';
 
 interface SubjectEntryFormProps {
   students: any[];
   onSave: (students: any[]) => void;
   onCancel: () => void;
   currentUser: any;
-  // Yeh props optional rakhe hain taaki purane parent component se error na aaye
-  classLevel?: string; 
-  examType?: string;
 }
 
 const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({ 
@@ -20,7 +16,7 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({
   onCancel,
   currentUser,
 }) => {
-  // 1. Local State for Selections
+  // 1. Local State
   const [selectedClass, setSelectedClass] = useState<string>(currentUser?.assignedClass || '10th');
   const [examType, setExamType] = useState<string>('bimonthly');
   const [selectedSubKey, setSelectedSubKey] = useState<string>('math');
@@ -69,9 +65,9 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({
     // Rule 1: Bimonthly
     if (type === 'bimonthly') return 20;
 
-    // Rule 2: Term or Preboard
+    // Rule 2: Term or Preboard (FIXED: 65 for Pbi)
     if (type === 'term' || type === 'preboard') {
-      return isPbi ? 65 : 80; // ✅ 65 Fix for Pbi A/B
+      return isPbi ? 65 : 80;
     }
 
     // Rule 3: Final
@@ -87,7 +83,7 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({
     if (!currentUser) return false;
     const role = currentUser.role;
 
-    // A. ADMIN: Sab Maaf
+    // A. ADMIN: Sab Maaf (Unlock Everything)
     if (role === 'ADMIN') return true;
 
     // B. CLASS INCHARGE: Apni Class mein sab kuch
@@ -96,7 +92,6 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({
     }
 
     // C. SUBJECT TEACHER (Ya Incharge dusri class mein): Sirf Apna Subject
-    // Check if teachingSubjects array exists and has the subject
     if (Array.isArray(currentUser.teachingSubjects)) {
       return currentUser.teachingSubjects.includes(selectedSubKey);
     }
@@ -104,7 +99,7 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({
     return false;
   }, [currentUser, selectedClass, selectedSubKey]);
 
-  // Storage Key
+  // Storage Key Logic
   const storageKey = `${examType}_${selectedSubKey}`;
 
   // Load Data
@@ -120,7 +115,7 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({
     setLocalMarks(fresh);
   }, [storageKey, students, selectedClass]);
 
-  // Handle Input
+  // Handle Input Change
   const handleInputChange = (rollNo: string, val: string) => {
     if (!canEdit) return; // 🔒 Security check
     if (val !== '' && !/^\d+$/.test(val)) return; // Only numbers
@@ -155,8 +150,8 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({
       return s;
     });
 
-    onSave(updatedStudents); // Parent update
-    localStorage.setItem('student_data', JSON.stringify(updatedStudents)); // Hard Save
+    onSave(updatedStudents);
+    localStorage.setItem('student_data', JSON.stringify(updatedStudents));
     alert("Marks Saved Successfully!");
   };
 
@@ -186,7 +181,7 @@ const SubjectEntryForm: React.FC<SubjectEntryFormProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-200">
+    <div className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200">
       
       {/* HEADER & CONTROLS */}
       <div className="p-6 bg-slate-900 text-white">
